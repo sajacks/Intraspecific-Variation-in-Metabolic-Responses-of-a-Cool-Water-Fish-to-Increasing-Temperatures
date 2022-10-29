@@ -1,0 +1,19 @@
+Date & time of file creation	8/2/2021 9:06 AM																																																																
+Data file path	C:\Users\New User\Desktop\MR Data 2021\Static MR_8.2.2026\Acclimation_8.2.2021.txt																																																																
+Raw data file path	C:\Users\New User\Desktop\MR Data 2021\Static MR_8.2.2026\Acclimation_8.2.2021_raw.txt																																																																
+																																																																	
+																																																																	
+Parameter/Chamber	Wet weight [g]	Resp. volume [mL]	Fish length [cm]	Fractional error [%]	Chamber notes																																																												
+Chamber 1	2.695	75.50000000000001	13.6																																																														
+Chamber 2	3.4	74.49989705579577																																																															
+Chamber 3	3.58	74.49980445834964																																																															
+Chamber 4	2.2	76.00000000000001																																																															
+Chamber 5	2.38	75.73333333333335	10																																																														
+Chamber 6	2.62	75.48076923076924																																																															
+Chamber 7	2.550	75.50000000000001																																																															
+Chamber 8	3.44	74.49694501018331																																																															
+																																																																	
+																																																																	
+Date &Time [DD-MM-YYYY/HH:MM:SS]	Time [sec]	Loop	Phase time [s]	CH 1 MO2 [mgO2/kg/hr]	CH 1 slope [%air sat./hr]	CH 1 R^2	CH 1 max O2 [%air sat.]	CH 1 min O2 [%air sat.]	CH 1 avg O2 [%air sat.]	CH 1 avg temp [°C]	CH 2 MO2 [mgO2/kg/hr]	CH 2 slope [%air sat./hr]	CH 2 R^2	CH 2 max O2 [%air sat.]	CH 2 min O2 [%air sat.]	CH 2 avg O2 [%air sat.]	CH 2 avg temp [°C]	CH 3 MO2 [mgO2/kg/hr]	CH 3 slope [%air sat./hr]	CH 3 R^2	CH 3 max O2 [%air sat.]	CH 3 min O2 [%air sat.]	CH 3 avg O2 [%air sat.]	CH 3 avg temp [°C]	CH 4 MO2 [mgO2/kg/hr]	CH 4 slope [%air sat./hr]	CH 4 R^2	CH 4 max O2 [%air sat.]	CH 4 min O2 [%air sat.]	CH 4 avg O2 [%air sat.]	CH 4 avg temp [°C]	CH 5 MO2 [mgO2/kg/hr]	CH 5 slope [%air sat./hr]	CH 5 R^2	CH 5 max O2 [%air sat.]	CH 5 min O2 [%air sat.]	CH 5 avg O2 [%air sat.]	CH 5 avg temp [°C]	CH 6 MO2 [mgO2/kg/hr]	CH 6 slope [%air sat./hr]	CH 6 R^2	CH 6 max O2 [%air sat.]	CH 6 min O2 [%air sat.]	CH 6 avg O2 [%air sat.]	CH 6 avg temp [°C]	CH 7 MO2 [mgO2/kg/hr]	CH 7 slope [%air sat./hr]	CH 7 R^2	CH 7 max O2 [%air sat.]	CH 7 min O2 [%air sat.]	CH 7 avg O2 [%air sat.]	CH 7 avg temp [°C]	CH 8 MO2 [mgO2/kg/hr]	CH 8 slope [%air sat./hr]	CH 8 R^2	CH 8 max O2 [%air sat.]	CH 8 min O2 [%air sat.]	CH 8 avg O2 [%air sat.]	CH 8 avg temp [°C]	AMB temp N°1 avg temp [°C]	AMB temp N°1 setpoint [°C]	AMB temp N°1 hysteresis [°C]	AMB temp N°2 avg temp [°C]	AMB temp N°2 setpoint [°C]	AMB temp N°2 hysteresis [°C]
+8/2/2021/5:43:58 PM	31021	1	F360/W60/M180	284.8	-113.855	0.988	95.14	89.23	92.19	20.91	399.6	-204.152	0.990	92.96	82.61	87.75	20.91	232.7	-125.194	0.969	95.40	89.24	92.84	20.91	1.5	-0.569	0.002	97.28	96.38	96.83	20.91	161.2	-57.923	0.801	97.81	93.40	96.04	20.94	482.7	-188.744	0.977	95.95	85.24	91.69	20.94	507.1	-192.932	0.988	96.96	87.49	92.29	20.94	446.3	-231.885	0.988	95.86	85.00	90.86	20.94	20.98	21.00	0.10	21.02	21.00	0.10
+8/2/2021/5:56:46 PM	31789	2	F360/W60/M180	292.6	-117.097	0.985	95.13	89.24	92.35	20.97	361.9	-185.133	0.988	93.55	83.84	88.50	20.97	248.8	-134.048	0.990	95.64	89.15	92.40	20.97	-2.6	0.766	0.005	97.23	96.39	96.79	20.97	309.3	-110.167	0.977	95.76	89.79	92.64	21.00	416.9	-163.419	0.969	96.59	88.38	92.48	21.00	480.5	-183.097	0.990	94.49	84.70	89.59	21.00	424.9	-221.074	0.994	93.33	82.00	88.07	21.00	20.95	21.00	0.10	21.00	21.00	0.10

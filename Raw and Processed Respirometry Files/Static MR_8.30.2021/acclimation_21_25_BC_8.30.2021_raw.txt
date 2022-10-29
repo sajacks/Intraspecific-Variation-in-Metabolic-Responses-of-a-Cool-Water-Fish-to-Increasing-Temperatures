@@ -1,0 +1,43 @@
+Date & time of file creation	8/30/2021 9:55 AM																																													
+Raw data file path	C:\Users\New User\Desktop\MR Data 2021\Static MR_8.30.2021\acclimation_21_25_BC_8.30.2021_raw.txt																																													
+Data file path	C:\Users\New User\Desktop\MR Data 2021\Static MR_8.30.2021\acclimation_21_25_BC_8.30.2021.txt																																													
+																																														
+																																														
+CALIBRATION DATA																																														
+Parameter/Channel	N moving average	LO input	HI input	LO value	HI value	LO cal temp [°C]	HI cal temp [°C]																																							
+Chamber 1	1	58.0500	27.1000	0.00	100.00	22.59	20.76																																							
+Chamber 2	1	58.0500	27.0300	0.00	100.00	22.59	20.76																																							
+Chamber 3	1	58.0500	27.0500	0.00	100.00	22.59	20.76																																							
+Chamber 4	1	58.0500	27.0000	0.00	100.00	22.59	20.76																																							
+Chamber 5	1	58.0500	27.0500	0.00	100.00	22.59	20.76																																							
+Chamber 6	1	58.0500	27.1200	0.00	100.00	22.59	20.76																																							
+Chamber 7	1	58.0500	27.1200	0.00	100.00	22.59	20.76																																							
+Chamber 8	1	59.5000	26.8300	0.00	100.00	22.59	20.76																																							
+																																														
+																																														
+Ambient temp N°1	1	0.0000	0.0000	0.00	0.00	Not used	Not used																																							
+Ambient temp N°2	1	0.0000	0.0000	0.00	0.00	Not used	Not used																																							
+																																														
+																																														
+																																														
+																																														
+EXPERIMENT DATA																																														
+Parameter/Channel	Chamber vol [mL]	Tube vol [mL]	Wet weight [g]	Density [kg/L]	Fish length [cm]	Fish width [cm]	Fish depth [cm]	Cross section area [cm2]																																						
+Chamber 1	70	8	5.93	0.988	0	Not used	Not used	Not used																																						
+Chamber 2	70	8	5.54	1.00100000000000	Not used	Not used	Not used	Not used																																						
+Chamber 3	70	8	7.42	0.989	Not used	Not used	Not used	Not used																																						
+Chamber 4	70	8	5.09	1.02	Not used	Not used	Not used	Not used																																						
+Chamber 5	70	8	4.84	0.968	0	Not used	Not used	Not used																																						
+Chamber 6	70	8	5.48	0.996	Not used	Not used	Not used	Not used																																						
+Chamber 7	70	8	9.65	0.965	Not used	Not used	Not used	Not used																																						
+Chamber 8	70	8	4.84	0.968	Not used	Not used	Not used	Not used																																						
+																																														
+																																														
+																																														
+																																														
+Date &Time [DD-MM-YYYY/HH:MM:SS]	Phase	Barometric pressure [hPa]	Salinity [‰]	CH1 O2 input [phase]	CH1 temp (°C)	CH1 O2 [%air sat.]	CH2 O2 input [phase]	CH2 temp (°C)	CH2 O2 [%air sat.]	CH3 O2 input [phase]	CH3 temp (°C)	CH3 O2 [%air sat.]	CH4 O2 input [phase]	CH4 temp (°C)	CH4 O2 [%air sat.]	CH5 O2 input [phase]	CH5 temp (°C)	CH5 O2 [%air sat.]	CH6 O2 input [phase]	CH6 temp (°C)	CH6 O2 [%air sat.]	CH7 O2 input [phase]	CH7 temp (°C)	CH7 O2 [%air sat.]	CH8 O2 input [phase]	CH8 temp (°C)	CH8 O2 [%air sat.]	CH1 Velocity input [V]	CH1 Velocity [cm/s]	CH5 Velocity input [V]	CH5 Velocity [cm/s]	AMB temp N°1 input [V]	AMB temp N°1 [°C]	AMB temp N°1 relay	AMB temp N°2 input [V]	AMB temp N°2 [°C]	AMB temp N°2 relay	AMB O2 N°1 input (V)	AMB O2 N°1 temp (°C)	AMB O2 N°1 [%air sat.]	AMB O2 N°1 relay	AMB O2 N°2 input (V)	AMB O2 N°2 temp (°C)	AMB O2 N°2 [%air sat.]	AMB O2 N°2 relay	User event
+8/30/2021/9:56:00 AM	Flush	1013.0	0.0	28.2300	21.01	89.51	29.2700	21.01	80.81	28.8900	21.01	83.82	27.9600	21.01	90.93	28.5600	20.94	86.52	28.2500	20.94	89.63	30.8000	20.94	71.11	27.9000	20.94	90.13	NaN	NaN	NaN	NaN	21.0100	21.01	OFF	20.9400	20.94	OFF	NaN	0.00	NaN	OFF	NaN	0.00	NaN	OFF	
+8/30/2021/9:56:01 AM	Flush	1013.0	0.0	28.2200	21.01	89.60	29.1700	21.01	81.55	28.9200	21.01	83.59	27.9600	21.01	90.93	28.5475	20.94	86.62	28.2312	20.94	89.79	30.8437	20.94	70.83	27.8813	20.94	90.29	NaN	NaN	NaN	NaN	21.0100	21.01	OFF	20.9400	20.94	OFF	NaN	0.00	NaN	OFF	NaN	0.00	NaN	OFF	
+8/30/2021/9:56:02 AM	Flush	1013.0	0.0	28.2800	21.01	89.10	29.2500	21.01	80.96	28.9300	21.01	83.52	27.9900	21.01	90.67	28.5450	20.94	86.64	28.2400	20.94	89.72	30.8650	20.94	70.70	27.8800	20.94	90.30	NaN	NaN	NaN	NaN	21.0100	21.01	OFF	20.9400	20.94	OFF	NaN	0.00	NaN	OFF	NaN	0.00	NaN	OFF	
+8/30/2021/9:56:03 AM	Flush	1013.0	0.0	28.2800	21.02	89.08	29.2300	21.02	81.09	28.9300	21.02	83.50	27.9900	21.02	90.65	28.5600	20.94	86.52	28.2750	20.94	89.42	30.8650	20.94	70.70	27.9050	20.94	90.09	NaN	NaN	NaN	NaN	21.0200	21.02	OFF	20.9400	20.94	OFF	NaN	0.00	NaN	OFF	NaN	0.00	NaN	OFF	
+8/30/2021/9:56:04 AM	Flush	1013.0	0.0	28.3100	21.01	88.85	29.2500	21.01	80.96	28.9300	21.01	83.52	27.9700	21.01	90.84	28.5300	20.94	86.76	28.3100	20.94	89.13	30.8950	20.94	70.51	27.9250	20.94	89.92	NaN	NaN	NaN	NaN	21.0100	21.01	OFF	20.9400	20.94	OFF	NaN	0.00	NaN	OFF	NaN	0.00	NaN	OFF	

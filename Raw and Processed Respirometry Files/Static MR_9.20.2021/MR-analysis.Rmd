@@ -1,0 +1,3167 @@
+---
+title: "2020 MR analysis"
+output: html_notebook
+---
+
+Data exploration and analysis of MR data from Nov 2019-Jan 2020 experiments.
+
+Abbreviations:
+-MR - metabolic rate
+-SMR - standard metabolic rate.  We're defining this as the average of the lowest 10% of MR measurements in static chambers. Technically, this is really a routine metabolic rate - because the true SMR is extracted from a MR vs swimming speed curve generated using swim tunnel respirometry.
+-MMR - maximum metabolic rate.  The peak MR value measured after a chase protocol.
+-AS - aerobic scope, the difference between MMR and SMR.
+
+
+#References
+* = papers we got our experiment protocols from
+
+Brown JG. 1990. Examination of walleye (Stizostedion vitreum) stocks using morphometrics and meristics, biochemical genetic analysis and standard rate of oxygen consumption. (Masters thesis, University of Manitoba).
+
+Cech JJ. Respirometry. In: Methods for Fish Biology, eds. Schreck CB and Moyle PB. Bethesda: American Fisheries Society, 2002 ed. (Reprint of 1990 book)
+
+Clarke A and Johnston N. 1999. Sclaing of metabolic rate with body mass and temperature in teleost fish. Journal of Animal Ecology 68(5): 893-905.
+
+Killen SS et al. 2010. The intraspecific scaling of metabolic rate with body mass in fishes depends on lifestyle and temperature. Ecology Letters 13: 184-193. (see supplements)
+
+*Lapointe et al. 2018. Predicted impacts of climate warming on aerobic performance and upper thermal tolerance of six tropical freshwater fishes spanning three continents. Conservation Physiology 6(1): 1-19.
+
+*Norin et al. 2014. Aerobic scope does not predict the performance of a tropical eurythermal fish at elevated temperatures. Journal of Experimental Biology 217(2): 244-251.
+
+Quinn and Keough. 2002. Experimental Design and Data Analysis for Biologists. Cambridge: Cambridge University Press.
+
+Schurmann H and Steffensen J. 1997. Effects of temperature, hypoxia and activity on the metabolism of juvenile Atlantic cod. Journal of Fish Biology 50(6): 1166-1180.
+
+Tarby MJ. 1981. Metabolic expenditure of walleye (Stizostedion vitreum vitreum) as determined by rate of oxygen consumption. Canadian Journal of Zoology 59(6): 882-889.
+
+Zuur et al. 2009. Mixed Effects Models and Extensions in Ecology with R. New York: Springer.
+
+Note: analysis process generally follows procedures outlined in Zuur, with background on assumptions/limitations from Quinn & Keough.
+
+
+
+#Setup
+
+Load libraries
+```{r}
+
+library(tidyverse)
+library(knitr)
+library(nlme)
+library(emmeans)
+library(kableExtra)
+library(GGally)
+library(qqplotr)
+library(gridExtra)
+library(car)
+
+
+```
+
+
+#Load and format data
+
+```{r}
+setwd("~/Desktop/MR data/2021 Spring Fingerling Data")
+spring_data <- read.csv("All Data Spring 2021.csv")
+spring_data_Rep1<-read.csv("Spring Data OnlyRep1.csv")
+spring_data_Rep2<-read.csv("Spring Data OnlyRep1.csv")
+
+```
+
+
+Make sure some variables are categorical
+```{r}
+spring_data$Trial <- factor(spring_data$Trial)
+spring_data$Stock <- factor(spring_data$Stock)
+spring_data$Pond  <-factor(spring_data$Pond)
+spring_data$Temp.factor <- factor(spring_data$Temp.factor)
+spring_data$Experiment <-factor(spring_data$Experiment)
+spring_data$Replicate<-factor(spring_data$Replicate)
+spring_data$Ind<-factor(spring_data$Ind)
+spring_data$test.Num<-factor(spring_data$test.Num)
+```
+
+
+
+#Initial data exploration
+
+##Let's get an initial sense of distributions.
+```{r, fig.width=10,fig.height=8}
+ggpairs(spring_data, c("Trial", "Mass", "Temp.factor", "SMR.units", "MMR.units", "AS.absolute.units", "Stock","Pond", "K"))
+```
+
+
+
+
+
+
+
+##MR vs body mass scaling
+
+Body mass and MR have an allometric relationship.  It's pretty typical to see MR datasets scaled to a single mass value.  We may need to do this here, since there were several weeks between the start of acute trials and the start of acclimated trials - meaning, acclimated fishes may have been larger.
+
+
+What do our fish body masses look like?
+```{r}
+ggplot(spring_data, aes(x = Mass, color = Pond)) + 
+  geom_histogram(fill="white",position="dodge",bins=20)
+
+```
+
+
+Looks like acute is generally smaller, though there is much more spread in acclimated.  Let's see if there's a linear, consistent MR vs mass relationship (would be needed for an ANCOVA).
+
+```{r, fig.width=8, fig.height=4}
+
+#for easier data handling
+
+acute_data <- filter(spring_data, spring_data$Trial == "Acute")
+
+
+grid.arrange(
+  ggplot(
+    aggregate(cbind(SMR.units, Mass) ~ Temp.factor + FishIDs, 
+              data=filter(acute_data, acute_data$Stock== "LP"), mean),
+         aes(x = Mass, y = SMR.units, color = Temp.factor)) + 
+    geom_point(alpha = 0.4) + geom_smooth(method = "lm", se = FALSE) + ggtitle("LP: Acute SMR") + 
+    theme_classic() + theme(legend.position='none'),
+  
+  ggplot(
+    aggregate(cbind(SMR.units, Mass) ~ Temp.factor + FishIDs, 
+              data=filter(acute_data, acute_data$Stock == "UP"), mean),
+         aes(x = Mass, y = SMR.units, color = Temp.factor)) + 
+    geom_point(alpha = 0.4) + geom_smooth(method = "lm", se = FALSE) + ggtitle("UP: Acute SMR") + 
+    theme_classic() + theme(legend.position='none'),
+  
+  ggplot(aggregate(cbind(MMR.units, Mass) ~ Temp.factor + FishIDs, 
+                   data=filter(acute_data, acute_data$Stock == "LP"), mean),
+         aes(x = Mass, y = MMR.units, color = Temp.factor)) + 
+    geom_point(alpha = 0.4) + geom_smooth(method = "lm", se = FALSE) + ggtitle("LP: Acute MMR") + 
+    theme_classic() + theme(legend.position='none'),
+  
+  ggplot(aggregate(cbind(MMR.units, Mass) ~ Temp.factor + FishIDs, 
+                   data=filter(acute_data, acute_data$Stock == "UP"), mean),
+         aes(x = Mass, y = MMR.units, color = Temp.factor)) + 
+    geom_point(alpha = 0.4) + geom_smooth(method = "lm", se = FALSE) + ggtitle("UP: Acute MMR") + 
+    theme_classic() + theme(legend.position='none'),
+  
+  ncol=4)
+
+```
+
+```{r}
+grid.arrange(
+  ggplot(
+    aggregate(cbind(SMR.units, Mass) ~ Temp.factor + FishIDs, 
+              data=filter(acute_data, acute_data$Pond== "BC"), mean),
+         aes(x = Mass, y = SMR.units, color = Temp.factor)) + 
+    geom_point(alpha = 0.4) + geom_smooth(method = "lm", se = FALSE) + ggtitle("BC: Acute SMR") + 
+    theme_classic() + theme(legend.position='none'),
+   ggplot(
+    aggregate(cbind(SMR.units, Mass) ~ Temp.factor + FishIDs, 
+              data=filter(acute_data, acute_data$Pond== "DB"), mean),
+         aes(x = Mass, y = SMR.units, color = Temp.factor)) + 
+    geom_point(alpha = 0.4) + geom_smooth(method = "lm", se = FALSE) + ggtitle("DB: Acute SMR") + 
+    theme_classic() + theme(legend.position='none'),
+  ggplot(
+    aggregate(cbind(SMR.units, Mass) ~ Temp.factor + FishIDs, 
+              data=filter(acute_data, acute_data$Pond == "LF"), mean),
+         aes(x = Mass, y = SMR.units, color = Temp.factor)) + 
+    geom_point(alpha = 0.4) + geom_smooth(method = "lm", se = FALSE) + ggtitle("LF: Acute SMR") + 
+    theme_classic() + theme(legend.position='none'),
+  
+  ggplot(aggregate(cbind(MMR.units, Mass) ~ Temp.factor + FishIDs, 
+                   data=filter(acute_data, acute_data$Pond == "BC"), mean),
+         aes(x = Mass, y = MMR.units, color = Temp.factor)) + 
+    geom_point(alpha = 0.4) + geom_smooth(method = "lm", se = FALSE) + ggtitle("BC: Acute MMR") + 
+    theme_classic() + theme(legend.position='none'),
+    ggplot(aggregate(cbind(MMR.units, Mass) ~ Temp.factor + FishIDs, 
+                   data=filter(acute_data, acute_data$Pond == "DB"), mean),
+         aes(x = Mass, y = MMR.units, color = Temp.factor)) + 
+    geom_point(alpha = 0.4) + geom_smooth(method = "lm", se = FALSE) + ggtitle("DB: Acute MMR") + 
+    theme_classic() + theme(legend.position='none'),
+  ggplot(aggregate(cbind(MMR.units, Mass) ~ Temp.factor + FishIDs, 
+                   data=filter(acute_data, acute_data$Pond == "LF"), mean),
+         aes(x = Mass, y = MMR.units, color = Temp.factor)) + 
+    geom_point(alpha = 0.4) + geom_smooth(method = "lm", se = FALSE) + ggtitle("LF: Acute MMR") + 
+    theme_classic() + theme(legend.position='none'),
+  
+  ncol=3)
+
+```
+
+These quick plots do indicate that we have a wide enough range of masses to see relationships.
+
+Slopes aren't really consistent, which violates the assumptions of ANCOVA, and makes having mass as a covariate problematic.
+
+
+So, we could scale everything by mass to a single value (like, 8.5 g ish, since that's within the range of both datasets), or include mass as a covariate in a robust ANCOVA.
+
+Below: Can we pull out a scaling coefficient between body mass and MR?
+
+
+Step 1: get all 21 deg data - using only acclimated data and data from acute set (21 deg C = first test) to account for potential issues of repeated measures.
+```{r}
+all_21 <- filter(acute_data, acute_data$Temp.factor == "21")
+  
+```
+
+And get all acclimated plus the 21 deg C = first test from acute test to account for stress tests in acute trials.
+```{r}
+acclim_plus_21 <- rbind(acute_data[1:4,], acute_data[33:35,], acclim_data)
+```
+
+
+
+Step 2: plot log(MR NOT mass specific) vs log(mass)
+
+```{r, fig.width=5, fig.height=10}
+grid.arrange(
+  ggplot(spring_data, aes(x = log(Mass), y = log(SMR.units*Mass*0.001))) + 
+    geom_point(alpha = 0.4) + geom_smooth(method = "lm", se = FALSE) +
+    theme_classic() + ggtitle("SMR"),
+  
+  ggplot(spring_data, aes(x = log(Mass), y = log(MMR.units*Mass*0.001))) + 
+    geom_point(alpha = 0.4) + geom_smooth(method = "lm", se = FALSE) + 
+    theme_classic() + ggtitle("MMR"),
+  
+  ggplot(spring_data, aes(x = log(Mass), y = log(SMR.units*Mass*0.001), color = Trial)) + 
+    geom_point(alpha = 0.4) + geom_smooth(method = "lm", se = FALSE) + 
+    theme_classic() + theme(legend.position="none"),
+  
+  ggplot(spring_data, aes(x = log(Mass), y = log(MMR.units*Mass*0.001), color = Trial)) + 
+    geom_point(alpha = 0.4) + geom_smooth(method = "lm", se = FALSE) + 
+    theme_classic() + theme(legend.position="none"),
+  
+  ggplot(all_21, aes(x = log(Mass), y = log(SMR.units*Mass*0.001))) + 
+    geom_point(alpha = 0.4) + geom_smooth(method = "lm", se = FALSE) + 
+    theme_classic() + theme(legend.position="none"),
+  
+  ggplot(all_21, aes(x = log(Mass), y = log(MMR.units*Mass*0.001))) + 
+    geom_point(alpha = 0.4) + geom_smooth(method = "lm", se = FALSE) + 
+    theme_classic() + theme(legend.position="none"),
+  
+  
+  ncol = 2
+  
+)
+
+```
+
+Top row is all data pooled.  Second has relationships within experiment type datasets.
+
+Temperature certainly influences MR.  If really trying to get a relationship between mass and MR, probably want to eliminate temperature as a confounding factor (MR known to change with temperature, Clarke and Johnston).  So, third row has 21 deg C tests only - it's got the largest n where fish were tested at their acclimation temperature - and fourth row has all acclimated tests regardless of temperature. Relationship looks pretty similar to the overall one.
+
+Bottom row checks that the masses are mixed across temperature treatments in the acclimated trials.
+
+
+
+Step 3: let's find the scaling factor for the MR vs mass log-log plots.
+
+We may want to use just acclimated data to avoid issues from repeated measures.  Let's do the whole dataset and the acclimated dataset, and see how different the scaling factor is.
+
+SMR, all data: 
+```{r}
+SMR_sf_all <- lm(log(SMR.units*Mass*0.001) ~ log(Mass), data = spring_data)
+summary(SMR_sf_all)
+
+```
+```{r}
+plot(SMR_sf_all)
+```
+
+
+
+SMR, acclimated fish only
+```{r}
+SMR_sf_acclim <- lm(log(SMR.units*Mass*0.001) ~ log(Mass), data = acclim_plus_21)
+summary(SMR_sf_acclim)
+
+```
+
+```{r}
+plot(SMR_sf_acclim)
+```
+
+
+MMR, all data: 
+```{r}
+MMR_sf_all <- lm(log(MMR.units*Mass*0.001) ~ log(Mass), data = spring_data)
+summary(MMR_sf_all)
+
+```
+
+MMR, acclimated fish only
+```{r}
+MMR_sf_acclim <- lm(log(MMR.units*Mass*0.001) ~ log(Mass), data = acclim_plus_21)
+summary(MMR_sf_acclim)
+
+```
+
+
+
+Ok, given that the scaling for walleye is ~0.8-0.9 in the literature (Tarby 1981; most of the numbers in the Brown thesis; Killen et al. 2010), the acclimated-only slope is more convincing.  Let's use that one.
+
+
+
+Let's try the 3 ways we can scale, and see how they turn out.
+
+To make this easier, let's add some columns to the datasets.
+```{r}
+
+spring_data$SMR.nm <- spring_data$SMR*spring_data$Mass*0.001
+spring_data$SMR.nm.units <- spring_data$SMR.units*spring_data$Mass*0.001
+spring_data$MMR.nm <- spring_data$MMR*spring_data$Mass*0.001
+spring_data$MMR.nm.units <- spring_data$MMR.units*spring_data$Mass*0.001
+
+
+#for easier data handling
+acclim_data <- filter(master_data, master_data$Trial == "Acclimated")
+acute_data <- filter(master_data, master_data$Trial == "Acute")
+```
+
+
+
+
+
+Option 1: divide by mass^scaling (Cech 2002/1990)
+
+```{r, fig.width=5, fig.height=5}
+grid.arrange(
+  ggplot(spring_data, aes(x = log(Mass), y = log(SMR.nm.units))) + 
+    geom_point(alpha = 0.4) + geom_smooth(method = "lm", se = FALSE) +
+    theme_classic() + ggtitle("SMR") + xlim(0,2.8) + ylim(-5,-2.5),
+  
+  ggplot(spring_data, aes(x = log(Mass), y = log(MMR.nm.units))) + 
+    geom_point(alpha = 0.4) + geom_smooth(method = "lm", se = FALSE) + 
+    theme_classic() + ggtitle("MMR") + xlim(0,2.8) + ylim(-4,-1.5),
+  
+  ggplot(spring_data, aes(x = log(Mass), y = log(SMR.nm.units/Mass**1.18819  ))) + 
+    geom_point(alpha = 0.4) + geom_smooth(method = "lm", se = FALSE) +
+    theme_classic() + ggtitle("Mass scaled, op1") + xlim(0,2.8) + ylim(-6.5,-4),
+  
+  ggplot(spring_data, aes(x = log(Mass), y = log(MMR.nm.units/Mass**1.05563))) + 
+    geom_point(alpha = 0.4) + geom_smooth(method = "lm", se = FALSE) + 
+    theme_classic() + ggtitle("Mass scaled, op1") + xlim(0,2.8) + ylim(-5.8,-3.3),
+  
+  ncol = 2
+  
+)
+
+```
+
+
+Option 2: Equation in Schurmann and Steffensen (1997)
+```{r, fig.width=5, fig.height=5}
+grid.arrange(
+  ggplot(spring_data, aes(x = log(Mass), y = log(SMR.nm.units))) + 
+    geom_point(alpha = 0.4) + geom_smooth(method = "lm", se = FALSE) +
+    theme_classic() + ggtitle("SMR") + xlim(0,2.8) + ylim(-5,-2.5),
+  
+  ggplot(spring_data, aes(x = log(Mass), y = log(MMR.nm.units))) + 
+    geom_point(alpha = 0.4) + geom_smooth(method = "lm", se = FALSE) + 
+    theme_classic() + ggtitle("MMR") + xlim(0,2.8) + ylim(-4,-1.5),
+  
+  ggplot(spring_data, aes(x = log(Mass), y = log(SMR.nm.units*(Mass/8.5)**(1-1.18819)))) +
+    geom_point(alpha = 0.4) + geom_smooth(method = "lm", se = FALSE) +
+    theme_classic() + ggtitle("SMR, op2") + xlim(0,2.8) + ylim(-5,-2.5),
+  
+  ggplot(spring_data, aes(x = log(Mass), y = log(MMR.nm.units*(Mass/8.5)**(1-1.05563)))) + 
+    geom_point(alpha = 0.4) + geom_smooth(method = "lm", se = FALSE) + 
+    theme_classic() + ggtitle("MMR, op2") + xlim(0,2.8) + ylim(-4,-1.5),
+  
+  ncol = 2
+  
+)
+
+```
+
+That didn't work... maybe it assumes MR going in already has mass divided?
+
+```{r, fig.width=5, fig.height=5}
+grid.arrange(
+  ggplot(spring_data, aes(x = log(Mass), y = log(SMR.nm.units))) + 
+    geom_point(alpha = 0.4) + geom_smooth(method = "lm", se = FALSE) +
+    theme_classic() + ggtitle("SMR") + xlim(0,2.8) + ylim(-5,-2.5),
+  
+  ggplot(spring_data, aes(x = log(Mass), y = log(MMR.nm.units))) + 
+    geom_point(alpha = 0.4) + geom_smooth(method = "lm", se = FALSE) + 
+    theme_classic() + ggtitle("MMR") + xlim(0,2.8) + ylim(-4,-1.5),
+  
+  ggplot(spring_data, aes(x = log(Mass), y = log(SMR.units*(Mass/8.5)**(1-1.18819)))) + 
+    geom_point(alpha = 0.4) + geom_smooth(method = "lm", se = FALSE) +
+    theme_classic() + ggtitle("SMR, op2") + xlim(0,2.8) + ylim(0,2.5),
+  
+  ggplot(spring_data, aes(x = log(Mass), y = log(MMR.units*(Mass/8.5)**(1-1.05563)))) + 
+    geom_point(alpha = 0.4) + geom_smooth(method = "lm", se = FALSE) + 
+    theme_classic() + ggtitle("MMR, op2") + xlim(0,2.8) + ylim(1,3.5),
+  
+  ncol = 2
+  
+)
+
+```
+
+Yes - and also, this makes sense based on the text in Schurmann and Steffensen.
+
+
+
+Option 3: Equation in Lapointe et al. (2018)
+```{r, fig.width=5, fig.height=5}
+grid.arrange(
+  ggplot(spring_data, aes(x = log(Mass), y = log(SMR.nm.units))) + 
+    geom_point(alpha = 0.4) + geom_smooth(method = "lm", se = FALSE) +
+    theme_classic() + ggtitle("SMR") + xlim(0,2.8) + ylim(-5,-2.5),
+  
+  ggplot(spring_data, aes(x = log(Mass), y = log(MMR.nm.units))) + 
+    geom_point(alpha = 0.4) + geom_smooth(method = "lm", se = FALSE) + 
+    theme_classic() + ggtitle("MMR") + xlim(0,2.8) + ylim(-4,-1.5),
+  
+  ggplot(spring_data, aes(x = log(Mass), y = log(SMR.nm.units*(8.5/Mass)**(1.18819)))) + 
+    geom_point(alpha = 0.4) + geom_smooth(method = "lm", se = FALSE) +
+    theme_classic() + ggtitle("SMR, op3") + xlim(0,2.8) + ylim(-5,-2.5),
+  
+  ggplot(spring_data, aes(x = log(Mass), y = log(MMR.nm.units*(8.5/Mass)**(1.05563)))) + 
+    geom_point(alpha = 0.4) + geom_smooth(method = "lm", se = FALSE) + 
+    theme_classic() + ggtitle("MMR, op3") + xlim(0,2.8) + ylim(-4,-1.5),
+  
+  ncol = 2
+  
+)
+
+```
+
+Looks like all three methods are identical - let's get the slopes, specifically, to confirm:
+```{r}
+summary(lm(log(SMR.nm.units/Mass**1.18819)~log(Mass), data = spring_data))
+```
+```{r}
+summary(lm(log(SMR.units*(Mass/8.5)**(1-1.18819))~log(Mass), data = spring_data))
+```
+
+```{r}
+summary(lm(log(SMR.nm.units*(8.5/Mass)**(1.17929)~log(Mass), data = spring_data))
+```
+
+
+So, any of the above works to remove the mass scaling relationship.  The first or second options seem best, because it's unclear from Lapointe when the scaling happens (off of MR/mass?  off of MR before dividing by mass?).
+
+To decide which: are the mass distributions in the two types of experiments different?
+We're pretty sure yes, but let's double-check.
+
+```{r}
+t.test(aggregate(acute_data$Mass, by=list(acute_data$FishIDs), mean)$x,acclim_data$Mass)
+
+```
+
+
+
+So, let's go with the second.  The first is easier to understand conceptually ("mass independent metabolic rate") but the units make comparisons outside this dataset difficult (mgO2 kg^-0.6 hr-1, etc).  The second conceptually is harder ("corrected to a body mass of x"), but the units will be easier to work with.
+
+
+Add the mass-specific MR to the master_data df.
+```{r}
+spring_data$SMR.ms <- spring_data$SMR*(spring_data$Mass/8.5)**(1-1.18819)
+spring_data$SMR.ms.units <- spring_data$SMR.units*(spring_data$Mass/8.5)**(1-1.18819)
+spring_data$MMR.ms <- spring_data$MMR*(spring_data$Mass/8.5)**(1-1.05563)
+spring_data$MMR.ms.units <- spring_data$MMR.units*(spring_data$Mass/8.5)**(1-1.05563)
+spring_data$MMR.Best.ms <- spring_data$MMR.Best*(spring_data$Mass/8.5)**(1-1.05563)
+spring_data$MMR.Best.ms.units<-spring_data$MMR.Best.units*(spring_data$Mass/8.5)**(1-1.05563) 
+```
+
+
+```{r}
+spring_data$AS.ms <- spring_data$MMR.ms - spring_data$SMR.ms
+spring_data$AS.ms.units <- spring_data$MMR.ms.units - spring_data$SMR.ms.units
+spring_data$AS.Best.ms <- spring_data$MMR.Best.ms - spring_data$SMR.ms
+spring_data$AS.Best.ms.units <- spring_data$MMR.Best.ms.units - spring_data$SMR.ms.units
+```
+
+
+
+Delete unused columns
+```{r}
+master_data$Phase <- NULL
+
+master_data$Slope.with.BR <- NULL
+
+master_data$Slope <- NULL
+
+master_data$SE <- NULL
+
+master_data$R2 <- NULL
+
+master_data$MR.abs.with.BR <- NULL
+
+master_data$BR <- NULL
+
+master_data$DO.unit <- NULL
+
+
+```
+
+
+```{r}
+#for easier data handling
+acclim_data <- filter(master_data, master_data$Trial == "Acclimated")
+acute_data <- filter(master_data, master_data$Trial == "Acute")
+```
+
+
+
+Save out cleaned data w/ mass-specific rates
+(commented out so not saving out constantly while writing/debugging)
+
+```{r}
+write.csv(spring_data,"All Spring 2021_cleaned.csv", 
+          row.names = FALSE)
+spring_data<-read.csv("All Spring 2021_cleaned.csv")
+spring_data$Temp.factor <- factor(spring_data$Temp.factor)
+```
+
+
+#Data exploration
+
+Point here being, now that we've removed the effect of mass, what do the results look like?
+
+```{r, fig.width=10,fig.height=8}
+ggpairs(spring_data, c("Trial", "SMR.Temp.true", "MMR.Temp.true","Temp.factor", "SMR.ms", "MMR.ms", "AS.ms", "Stock"))
+```
+
+
+```{r, fig.width=6, fig.height=4}
+
+grid.arrange(
+  ggplot(spring_data, aes(x = as.factor(Temp.factor), y = SMR.ms.units, color=Stock)) 
+    + geom_boxplot() + ggtitle("Acute, SMR") + theme(legend.position="none") + ylim(0,15),
+  
+  ggplot(spring_data, aes(x = as.factor(Temp.factor), y = MMR.ms.units, color=Stock)) 
+    + geom_boxplot() + ggtitle("Acute, MMR") + theme(legend.position="none") + ylim(0,15),
+  
+  ggplot(spring_data, aes(x = as.factor(Temp.factor), y = AS.ms.units, color=Stock)) 
+    + geom_boxplot() + ggtitle("Acute, AS") + theme() + ylim(0,15),
+  
+  ggplot(spring_data, aes(x = as.factor(Temp.factor), y = SMR.ms.units, color=Stock)) 
+    + geom_boxplot() + ggtitle("Acute, SMR") + theme(legend.position="none") + ylim(-0.5,15),
+  
+  ggplot(spring_data, aes(x = as.factor(Temp.factor), y = MMR.Best.ms.units, color=Stock)) 
+    + geom_boxplot() + ggtitle("Acute, Best MMR") + theme(legend.position="none") + ylim(0,15),
+  
+  ggplot(spring_data, aes(x = as.factor(Temp.factor), y = AS.Best.ms.units, color=Stock)) 
+    + geom_boxplot() + ggtitle("Acute, AS Best") + theme() + ylim(0,15),
+  
+  ncol=3
+)
+
+```
+LP = red, UP = blue
+
+```{r, fig.width=6, fig.height=4}
+
+grid.arrange(
+  ggplot(spring_data, aes(x = as.factor(Temp.factor), y = SMR.ms.units, color=Pond)) 
+    + geom_boxplot() + ggtitle("Acute, SMR") + theme(legend.position="none") + ylim(0,16),
+  
+  ggplot(spring_data, aes(x = as.factor(Temp.factor), y = MMR.ms.units, color=Pond)) 
+    + geom_boxplot() + ggtitle("Acute, MMR") + theme(legend.position="none") + ylim(0,16),
+  
+  ggplot(spring_data, aes(x = as.factor(Temp.factor), y = AS.ms.units, color=Pond)) 
+    + geom_boxplot() + ggtitle("Acute, AS") + theme() + ylim(0,16),
+  
+  ggplot(spring_data, aes(x = as.factor(Temp.factor), y = SMR.ms.units, color=Pond)) 
+    + geom_boxplot() + ggtitle("Acute, SMR") + theme(legend.position="none") + ylim(0,16),
+  
+  ggplot(spring_data, aes(x = as.factor(Temp.factor), y = MMR.Best.ms.units, color=Pond)) 
+    + geom_boxplot() + ggtitle("Acute, Best MMR") + theme(legend.position="none") + ylim(0,16),
+  
+  ggplot(spring_data, aes(x = as.factor(Temp.factor), y = AS.Best.ms.units, color=Pond)) 
+    + geom_boxplot() + ggtitle("Acute, AS Best") + theme() + ylim(0,16),
+  
+  ncol=3
+)
+
+```
+
+So, we're seeing some difference in variance across stocks and possible outliers in the UP data.  Keep in mind during model-making.  We're seeing differences across stock and test temperature.
+
+
+Next - the actual test temperature wasn't perfectly 21, 23, 25.  So look at the actual temps, too.
+
+
+```{r, fig.width=8, fig.height=6}
+
+grid.arrange(
+  ggplot(spring_data, aes(x = SMR.Temp.true, y = SMR.ms.units, color=Stock)) +
+    geom_point(alpha = 0.4) + geom_smooth(method = "lm", se = FALSE) + 
+    ggtitle("Acute, SMR") + theme(legend.position="none"),
+  
+  ggplot(spring_data, aes(x = MMR.Temp.true, y = MMR.ms.units, color=Stock)) +
+    geom_point(alpha = 0.4) + geom_smooth(method = "lm", se = FALSE) + 
+    ggtitle("Acute, MMR") + theme(legend.position="none"),
+  
+    ggplot(spring_data, aes(x = MMR.Best.Temp, y = MMR.Best.ms.units, color=Stock)) +
+    geom_point(alpha = 0.4) + geom_smooth(method = "lm", se = FALSE) + 
+    ggtitle("Acute, MMR") + theme(legend.position="none"),
+  
+  ggplot(spring_data, aes(x = SMR.Temp.true, y = SMR.ms.units, color=Pond)) +
+    geom_point(alpha = 0.4) + geom_smooth(method = "lm", se = FALSE) + 
+    ggtitle("Acute, SMR") + theme(legend.position="none"),
+  
+  ggplot(spring_data, aes(x = MMR.Temp.true, y = MMR.ms.units, color=Pond))+
+    geom_point(alpha = 0.4) + geom_smooth(method = "lm", se = FALSE) +
+    ggtitle("Acute, MMR") + theme(legend.position="none"),
+  
+    ggplot(spring_data, aes(x = MMR.Best.Temp, y = MMR.Best.ms.units, color=Pond)) +
+    geom_point(alpha = 0.4) + geom_smooth(method = "lm", se = FALSE) + 
+    ggtitle("Acute, MMR") + theme(legend.position="none"),
+
+  
+  ncol=3
+)
+
+```
+
+
+
+
+
+
+
+##Individual fishes within acute dataset
+
+Looking at the acute data set only, let's look at individuals' trajectories.
+
+```{r, fig.width=8, fig.height=6}
+
+grid.arrange(
+  ggplot(filter(spring_data, spring_data$Stock=="LP"), aes(x = SMR.Temp.true, y = SMR.ms.units, color=as.factor(Ind))) +
+    geom_point(alpha = 0.4) + geom_smooth(method = "lm", se = FALSE) + 
+    ggtitle("LP, SMR") + theme(legend.position="none"),
+  
+  ggplot(filter(spring_data, spring_data$Stock=="LP"), aes(x = SMR.Temp.true, y = MMR.ms.units, color=as.factor(Ind))) +
+    geom_point(alpha = 0.4) + geom_smooth(method = "lm", se = FALSE) + 
+    ggtitle("LP, MMR") + theme(legend.position="none"),
+  
+  ggplot(filter(spring_data, spring_data$Stock=="LP"), aes(x = Temp.factor, y = AS.ms.units, color=as.factor(Ind))) +
+    geom_point(alpha = 0.4) + geom_smooth(method = "lm", se = FALSE) + 
+    ggtitle("LP, AS") + theme(legend.position="none"),
+  
+  ggplot(filter(spring_data, spring_data$Stock=="UP"), aes(x = SMR.Temp.true, y = SMR.ms.units, color=as.factor(Ind))) +
+    geom_point(alpha = 0.4) + geom_smooth(method = "lm", se = FALSE) + 
+    ggtitle("UP, SMR") + theme(legend.position="none"),
+  
+  ggplot(filter(spring_data, spring_data$Stock=="UP"), aes(x = SMR.Temp.true, y = MMR.ms.units, color=as.factor(Ind))) +
+    geom_point(alpha = 0.4) + geom_smooth(method = "lm", se = FALSE) + 
+    ggtitle("UP, MMR") + theme(legend.position="none"),
+  
+  ggplot(filter(spring_data, spring_data$Stock=="UP"), aes(x = Temp.factor, y = AS.ms.units, color=as.factor(Ind))) +
+    geom_point(alpha = 0.4) + geom_smooth(method = "lm", se = FALSE) + 
+    ggtitle("UP, AS") + theme(legend.position="none"),
+  
+  
+  ncol=3
+)
+
+```
+
+May need both intercepts and slopes in the random effects for MMR and AS.
+
+
+
+##Is testTemp.Real a covariate?
+
+```{r, fig.width=8, fig.height=6}
+
+grid.arrange(
+  ggplot(filter(spring_data, spring_data$Stock == "LP"), 
+         aes(x = SMR.Temp.true, y = SMR.ms.units, color=Temp.factor)) +
+    geom_point(alpha = 0.4) + geom_smooth(method = "lm", se = FALSE) + 
+    ggtitle("LP, spring, SMR") + theme(legend.position="none"),
+  
+  ggplot(filter(spring_data, spring_data$Stock == "LP"), 
+         aes(x = MMR.Temp.true, y = MMR.ms.units, color=Temp.factor)) +
+    geom_point(alpha = 0.4) + geom_smooth(method = "lm", se = FALSE) + 
+    ggtitle("LP, spring, MMR") + theme(legend.position="none"),
+  
+  
+  ggplot(filter(spring_data, spring_data$Stock == "UP"), 
+         aes(x = SMR.Temp.true, y = SMR.ms.units, color=Temp.factor)) +
+    geom_point(alpha = 0.4) + geom_smooth(method = "lm", se = FALSE) + 
+    ggtitle("UP, spring, SMR") + theme(legend.position="none"),
+  
+  ggplot(filter(spring_data, spring_data$Stock == "UP"), 
+         aes(x = MMR.Temp.true, y = MMR.ms.units, color=Temp.factor)) +
+    geom_point(alpha = 0.4) + geom_smooth(method = "lm", se = FALSE) + 
+    ggtitle("UP, Acute, MMR") + theme(legend.position="none"),
+  
+  
+  
+  ncol=2
+)
+
+```
+
+
+
+```{r, fig.width=8, fig.height=6}
+
+grid.arrange(
+  ggplot(filter(acclim_data, acclim_data$Stock == "LP"), 
+         aes(x = testTemp.Real, y = SMR.ms.units, color=Temp.factor)) +
+    geom_point(alpha = 0.4) + geom_smooth(method = "lm", se = FALSE) + 
+    ggtitle("LP, acclim, SMR") + theme(legend.position="none"),
+  
+  ggplot(filter(acclim_data, acclim_data$Stock == "LP"), 
+         aes(x = testTemp.Real, y = MMR.ms.units, color=Temp.factor)) +
+    geom_point(alpha = 0.4) + geom_smooth(method = "lm", se = FALSE) + 
+    ggtitle("LP, acclim, MMR") + theme(legend.position="none"),
+  
+  ggplot(filter(acclim_data, acclim_data$Stock == "LP"), 
+         aes(x = testTemp.Real, y = AS.ms.units, color=Temp.factor)) +
+    geom_point(alpha = 0.4) + geom_smooth(method = "lm", se = FALSE) + 
+    ggtitle("LP, acclim, AS") + theme(legend.position="none"),
+  
+  ggplot(filter(acclim_data, acclim_data$Stock == "UP"), 
+         aes(x = testTemp.Real, y = SMR.ms.units, color=Temp.factor)) +
+    geom_point(alpha = 0.4) + geom_smooth(method = "lm", se = FALSE) + 
+    ggtitle("UP, acclim, SMR") + theme(legend.position="none"),
+  
+  ggplot(filter(acclim_data, acclim_data$Stock == "UP"), 
+         aes(x = testTemp.Real, y = MMR.ms.units, color=Temp.factor)) +
+    geom_point(alpha = 0.4) + geom_smooth(method = "lm", se = FALSE) + 
+    ggtitle("UP, acclim, MMR") + theme(legend.position="none"),
+  
+  ggplot(filter(acclim_data, acclim_data$Stock == "UP"), 
+         aes(x = testTemp.Real, y = AS.ms.units, color=Temp.factor)) +
+    geom_point(alpha = 0.4) + geom_smooth(method = "lm", se = FALSE) + 
+    ggtitle("UP, acclim, AS") + theme(legend.position="none"),
+  
+  ncol=3
+)
+
+```
+
+
+There doesn't seem to be a specific relationship between MR and mean test temperature within groups.  So, let's go with test temperature as a factor rather than as a continuous variable.
+
+
+
+
+#Prepatory analysis - repeated temperature in acute datasets
+
+##Data exploration - repeated temps
+
+So, because we used the same fish multiple times in the acute tests, we have a repeated measures design.  This means we could have some kind of effects that carryover from one trial to the next (Quinn & Keough 2002).  In theory, in there aren't any carryover effects, we shouldn't get different SMR and MMR values when we compare the first trial with the last (repeat temperature).  Lapointe et al. 2018 checked this with simple t-tests (one per acute experiment).
+
+Some complications: we only have either 4 or 3 fish in each experiment, so we could run into issues from variation.
+
+
+
+```{r, fig.width=8, fig.height=5}
+
+grid.arrange(
+  
+  ggplot(filter(spring_data, spring_data$Experiment=="1" & spring_data$Temp.factor=="21"), 
+         aes(x = Replicate, y = SMR.ms.units, color=as.factor(Replicate))) + 
+    geom_boxplot() + ggtitle("SMR, BC 21") + theme(legend.position="none"),
+  
+  ggplot(filter(spring_data, spring_data$Experiment=="2" & spring_data$Temp.factor=="21"), 
+         aes(x = Replicate, y = SMR.ms.units, color=as.factor(Replicate))) + 
+    geom_boxplot() + ggtitle("LF 21") + theme(legend.position="none"),
+  
+  ggplot(filter(spring_data, spring_data$Experiment=="3" & spring_data$Temp.factor=="25"), 
+         aes(x = Replicate, y = SMR.ms.units, color=as.factor(Replicate))) + 
+    geom_boxplot() + ggtitle("LF 25") + theme(legend.position="none"),
+  
+  ggplot(filter(spring_data, spring_data$Experiment=="4" & spring_data$Temp.factor=="25"), 
+         aes(x = Replicate, y = SMR.ms.units, color=as.factor(Replicate))) + 
+    geom_boxplot() + ggtitle("BC 25") + theme(legend.position="none"),
+  
+  ggplot(filter(spring_data, spring_data$Experiment=="5" & spring_data$Temp.factor=="21"), 
+         aes(x = Replicate, y = SMR.ms.units, color=as.factor(Replicate))) + 
+    geom_boxplot() + ggtitle("DB 21") + theme(legend.position="none"),
+  
+    ggplot(filter(spring_data, spring_data$Experiment=="6" & spring_data$Temp.factor=="25"), 
+         aes(x = Replicate, y = SMR.ms.units, color=as.factor(Replicate))) + 
+    geom_boxplot() + ggtitle("DB 25") + theme(legend.position="none"),
+  
+  
+  ggplot(filter(spring_data, spring_data$Experiment=="1" & spring_data$Temp.factor=="21"), 
+         aes(x = Replicate, y = MMR.ms.units, color=as.factor(Replicate))) + 
+    geom_boxplot() + ggtitle("MMR, LP 21") + theme(legend.position="none"),
+  
+  ggplot(filter(spring_data, spring_data$Experiment=="2" & spring_data$Temp.factor=="21"), 
+         aes(x = Replicate, y = MMR.ms.units, color=as.factor(Replicate))) + 
+    geom_boxplot() + ggtitle("UP 21") + theme(legend.position="none"),
+  
+  ggplot(filter(spring_data, spring_data$Experiment=="3" & spring_data$Temp.factor=="25"), 
+         aes(x = Replicate, y = MMR.ms.units, color=as.factor(Replicate))) + 
+    geom_boxplot() + ggtitle("UP 25") + theme(legend.position="none"),
+  
+  ggplot(filter(spring_data, spring_data$Experiment=="4" & spring_data$Temp.factor=="25"), 
+         aes(x = Replicate, y = MMR.ms.units, color=as.factor(Replicate))) + 
+    geom_boxplot() + ggtitle("LP 25") + theme(legend.position="none"),
+  
+  ggplot(filter(spring_data, spring_data$Experiment=="5" & spring_data$Temp.factor=="21"), 
+         aes(x = Replicate, y = MMR.ms.units, color=as.factor(Replicate))) + 
+    geom_boxplot() + ggtitle("DB 21") + theme(legend.position="none"),
+  ggplot(filter(spring_data, spring_data$Experiment=="6" & spring_data$Temp.factor=="25"), 
+         aes(x = Replicate, y = MMR.ms.units, color=as.factor(Replicate))) + 
+    geom_boxplot() + ggtitle("DB 25") + theme(legend.position="none"),
+  
+  
+  
+  ncol=6
+)
+
+
+
+```
+
+
+Above plots suggest that we have significant differences when we compare repeated measures.  Are these effects consistent?  Below, plot each individual fish and look for trends.
+
+
+```{r, fig.width=8, fig.height=5}
+
+
+grid.arrange(
+  
+  ggplot(filter(spring_data, spring_data$Experiment=="1" & spring_data$Temp.factor=="21"), 
+         aes(x = Replicate, y = SMR.ms.units, group=Ind)) + 
+    geom_line() + geom_point() + ggtitle("SMR, BC 21") + theme(legend.position="none"),
+  
+  ggplot(filter(spring_data, spring_data$Experiment=="2" & spring_data$Temp.factor=="21"), 
+         aes(x = Replicate, y = SMR.ms.units, group=Ind)) + 
+    geom_line() + geom_point() + ggtitle("LF 21") + theme(legend.position="none"),
+  
+  ggplot(filter(spring_data, spring_data$Experiment=="3" & spring_data$Temp.factor=="25"), 
+         aes(x = Replicate, y = SMR.ms.units, group=Ind)) + 
+    geom_line() + geom_point() + ggtitle("LF 25") + theme(legend.position="none"),
+  
+  ggplot(filter(spring_data, spring_data$Experiment=="4" & spring_data$Temp.factor=="25"), 
+         aes(x = Replicate, y = SMR.ms.units, group=Ind)) + 
+    geom_line() + geom_point() + ggtitle("BC 25") + theme(legend.position="none"),
+  
+  ggplot(filter(spring_data, spring_data$Experiment=="5" & spring_data$Temp.factor=="21"), 
+         aes(x = Replicate, y = SMR.ms.units, group=Ind)) + 
+    geom_line() + geom_point() + ggtitle("DB 21") + theme(legend.position="none"),
+  ggplot(filter(spring_data, spring_data$Experiment=="6" & spring_data$Temp.factor=="25"), 
+         aes(x = Replicate, y = SMR.ms.units, group=Ind)) + 
+    geom_line() + geom_point() + ggtitle("DB 25") + theme(legend.position="none"),
+  
+  
+  
+  ggplot(filter(spring_data, spring_data$Experiment=="1" & spring_data$Temp.factor=="21"), 
+         aes(x = Replicate, y = MMR.ms.units, group=Ind)) + 
+    geom_line() + geom_point() + ggtitle("MMR, BC 21") + theme(legend.position="none"),
+  
+  ggplot(filter(spring_data, spring_data$Experiment=="2" & spring_data$Temp.factor=="21"), 
+         aes(x = Replicate, y = MMR.ms.units, group=Ind)) + 
+    geom_line() + geom_point() + ggtitle("LF 21") + theme(legend.position="none"),
+  
+  ggplot(filter(spring_data, spring_data$Experiment=="3" & spring_data$Temp.factor=="25"), 
+         aes(x = Replicate, y = MMR.ms.units, group=Ind)) + 
+    geom_line() + geom_point() + ggtitle("LF 25") + theme(legend.position="none"),
+  
+  ggplot(filter(spring_data, spring_data$Experiment=="4" & spring_data$Temp.factor=="25"), 
+         aes(x = Replicate, y = MMR.ms.units, group=Ind)) + 
+    geom_line() + geom_point() + ggtitle("BC 25") + theme(legend.position="none"),
+  ggplot(filter(spring_data, spring_data$Experiment=="5" & spring_data$Temp.factor=="21"), 
+         aes(x = Replicate, y = MMR.ms.units, group=Ind)) + 
+    geom_line() + geom_point() + ggtitle("DB 21") + theme(legend.position="none"),
+  ggplot(filter(spring_data, spring_data$Experiment=="6" & spring_data$Temp.factor=="25"), 
+         aes(x = Replicate, y = MMR.ms.units, group=Ind)) + 
+    geom_line() + geom_point() + ggtitle("DB 25") + theme(legend.position="none"),
+  
+  
+  ncol=6
+)
+
+
+
+```
+
+Ok, this doesn't help much - nothing is consistent accross the board.
+
+
+
+If there's a specific effect of order of experiment, we might see a trend if we compare the tests at 21 degrees C from each experiment.
+```{r, fig.width=5, fig.height=4}
+
+grid.arrange(
+  
+  ggplot(filter(spring_data, spring_data$Stock=="LP" & spring_data$Temp.factor=="21"), 
+         aes(x = test.Num, y = SMR.ms.units, color=test.Num)) + 
+    geom_boxplot() + ggtitle("SMR, LP 21") + theme(legend.position="none"),
+  
+  ggplot(filter(spring_data, spring_data$Stock=="UP" & spring_data$Temp.factor=="21"), 
+         aes(x = test.Num, y = SMR.ms.units, color=test.Num)) + 
+    geom_boxplot() + ggtitle("UP 251") + theme(legend.position="none"),
+  
+  
+  
+  ggplot(filter(spring_data, spring_data$Stock=="LP" & spring_data$Temp.factor=="21"), 
+         aes(x = test.Num, y = MMR.ms.units, color=test.Num)) + 
+    geom_boxplot() + ggtitle("MMR, LP 21") + theme(legend.position="none"),
+  
+  ggplot(filter(spring_data, spring_data$Stock=="UP" & spring_data$Temp.factor=="21"), 
+         aes(x = test.Num, y = MMR.ms.units, color=test.Num)) + 
+    geom_boxplot() + ggtitle("UP 21") + theme(legend.position="none"),
+  
+  
+  ncol=2
+)
+
+
+
+```
+
+```{r, fig.width=5, fig.height=4}
+
+grid.arrange(
+  
+  ggplot(filter(spring_data, spring_data$Pond=="BC" & spring_data$Temp.factor=="21"), 
+         aes(x = test.Num, y = SMR.ms.units, color=test.Num)) + 
+    geom_boxplot() + ggtitle("SMR, BC 21") + theme(legend.position="none"),
+  
+  ggplot(filter(spring_data, spring_data$Pond=="LF" & spring_data$Temp.factor=="21"), 
+         aes(x = test.Num, y = SMR.ms.units, color=test.Num)) + 
+    geom_boxplot() + ggtitle("LF 21") + theme(legend.position="none"),
+    ggplot(filter(spring_data, spring_data$Pond=="DB" & spring_data$Temp.factor=="21"), 
+         aes(x = test.Num, y = SMR.ms.units, color=test.Num)) + 
+    geom_boxplot() + ggtitle("DB 21") + theme(legend.position="none"),
+  
+  
+  ggplot(filter(spring_data, spring_data$Pond=="BC" & spring_data$Temp.factor=="21"), 
+         aes(x = test.Num, y = MMR.ms.units, color=test.Num)) + 
+    geom_boxplot() + ggtitle("MMR, BC 21") + theme(legend.position="none"),
+  
+  ggplot(filter(spring_data, spring_data$Pond=="LF" & spring_data$Temp.factor=="21"), 
+         aes(x = test.Num, y = MMR.ms.units, color=test.Num)) + 
+    geom_boxplot() + ggtitle("LF 21") + theme(legend.position="none"),
+  
+    ggplot(filter(spring_data, spring_data$Pond=="DB" & spring_data$Temp.factor=="21"), 
+         aes(x = test.Num, y = MMR.ms.units, color=test.Num)) + 
+    geom_boxplot() + ggtitle("DB 21") + theme(legend.position="none"),
+  
+  
+  ncol=3
+)
+
+
+
+```
+
+
+
+No consistent trend here, either, but often decreases when appearing later for SMR and increases for MMR
+
+
+
+##Check repeatability
+
+It's pretty clear that we'll find significant differences, but we'll do the statistical testing for completeness.
+
+For testing for carryover effects - make a dataframe with repeated temps only
+
+```{r}
+carryover_data <- filter(spring_data, spring_data$Temp.factor != "23")
+
+carryover_data <- rbind(carryover_data[1:16,],
+                        carryover_data[25:40,],
+                        carryover_data[49:56,],
+                        carryover_data[65:80,],
+                        carryover_data[89:96,],
+                        carryover_data[97:104,],
+                        carryover_data[113:128,],
+                        carryover_data[137:144,])
+
+
+```
+
+
+
+###Attempt 0 - simple pairwise t tests on SMR
+This was the method used in Lapointe et al. 2018.
+
+
+LP 21
+```{r}
+test_data <- carryover_data %>%
+  
+  filter(Stock == "LP" & Temp.factor == "21")
+  
+pairwise.t.test(test_data$SMR.ms.units, test_data$Replicate, paired=TRUE, p.adjust.method = "none")
+
+
+```
+
+
+LP 25
+```{r}
+test_data <- carryover_data %>%
+  
+  filter(Stock == "LP" & Temp.factor == "25")
+  
+pairwise.t.test(test_data$SMR.ms.units, test_data$Replicate, paired=TRUE, p.adjust.method = "none")
+
+
+```
+
+
+UP 21
+```{r}
+test_data <- carryover_data %>%
+  
+  filter(Stock == "UP" & Temp.factor == "21")
+  
+pairwise.t.test(test_data$SMR.ms.units, test_data$Replicate, paired=TRUE, p.adjust.method = "none")
+
+
+```
+
+
+UP 25
+```{r}
+test_data <- carryover_data %>%
+  
+  filter(Stock == "UP" & Temp.factor == "25")
+  
+pairwise.t.test(test_data$SMR.ms.units, test_data$Replicate, paired=TRUE, p.adjust.method = "none")
+
+
+```
+
+
+25C test differently
+
+
+Now lets look at the ponds seperately.
+
+BC 21
+```{r}
+test_data <- carryover_data %>%
+  
+  filter(Pond == "BC" & Temp.factor == "21")
+  
+pairwise.t.test(test_data$SMR.ms.units, test_data$Replicate, paired=TRUE, p.adjust.method = "none")
+
+
+```
+
+
+BC 25
+```{r}
+test_data <- carryover_data %>%
+  
+  filter(Pond == "BC" & Temp.factor == "25")
+  
+pairwise.t.test(test_data$SMR.ms.units, test_data$Replicate, paired=TRUE, p.adjust.method = "none")
+
+
+```
+
+DB 21
+```{r}
+test_data <- carryover_data %>%
+  
+  filter(Pond == "DB" & Temp.factor == "21")
+  
+pairwise.t.test(test_data$SMR.ms.units, test_data$Replicate, paired=TRUE, p.adjust.method = "none")
+
+
+```
+DB 25
+```{r}
+test_data <- carryover_data %>%
+  
+  filter(Pond == "DB" & Temp.factor == "25")
+  
+pairwise.t.test(test_data$SMR.ms.units, test_data$Replicate, paired=TRUE, p.adjust.method = "none")
+
+
+```
+
+LF 21
+```{r}
+test_data <- carryover_data %>%
+  
+  filter(Pond == "LF" & Temp.factor == "21")
+  
+pairwise.t.test(test_data$SMR.ms.units, test_data$Replicate, paired=TRUE, p.adjust.method = "none")
+
+
+```
+
+
+LF 25
+```{r}
+test_data <- carryover_data %>%
+  
+  filter(Pond == "LF" & Temp.factor == "25")
+  
+pairwise.t.test(test_data$SMR.ms.units, test_data$Replicate, paired=TRUE, p.adjust.method = "none")
+
+
+```
+
+
+LF 25 C and DB test differently
+
+###SMR 
+
+A couple of notes.  We still need to know if the test order matters.  
+
+Could we do that by including test.Num as a fixed effect?
+
+
+Ideally, we'd want something like below.
+
+First model uses a correlation structure to account that measurements closer together in time probably are more similar.  Other just does a simple repeated measures test.
+```{r}
+
+SMR_pairs_m.test1 <- gls(SMR.ms.units ~ Experiment*test.Num,
+                    data = spring_data,
+                    correlation = corAR1(form = ~test.Num|Ind)
+                    )
+
+SMR_pairs_m.test2 <- lme(SMR.ms.units ~ Experiment*test.Num,
+                    data = spring_data,
+                    random = ~1|Ind
+                    )
+
+AIC(SMR_pairs_m.test1,SMR_pairs_m.test2)
+
+```
+
+
+```{r, rows.print=16}
+summary(SMR_pairs_m.test2)
+```
+
+
+```{r}
+anova(SMR_pairs_m.test2)
+```
+
+
+```{r}
+try_me <- emmeans(SMR_pairs_m.test2, ~test.Num|Experiment)
+
+contrast(try_me, method = list(c(1,0,0,-1)) )
+```
+
+
+
+
+Note that we don't get same results (p-values, etc) as when did individual paired t-tests, but this seems to get us to the same conclusions.  A possibility for scaling up in the future.
+
+
+####Repeat Attempt 0 & 2 for MMR
+(Note not needed for AS - AS is calculated from SMR and MMR measurements)
+
+Attempt 0 (simple t-tests)
+
+LP 21
+```{r}
+test_data <- carryover_data %>%
+  
+  filter(Stock == "LP" & Temp.factor == "21")
+  
+pairwise.t.test(test_data$MMR.ms.units, test_data$Replicate, paired=TRUE, p.adjust.method = "none")
+
+
+```
+
+
+LP 23
+```{r}
+test_data <- carryover_data %>%
+  
+  filter(Stock == "LP" & Temp.factor == "25")
+  
+pairwise.t.test(test_data$MMR.ms.units, test_data$Replicate, paired=TRUE, p.adjust.method = "none")
+
+
+```
+
+
+UP 21
+```{r}
+test_data <- carryover_data %>%
+  
+  filter(Stock == "UP" & Temp.factor == "21")
+  
+pairwise.t.test(test_data$MMR.ms.units, test_data$Replicate, paired=TRUE, p.adjust.method = "none")
+
+
+```
+
+
+UP 23
+```{r}
+test_data <- carryover_data %>%
+  
+  filter(Stock == "UP" & Temp.factor == "25")
+  
+pairwise.t.test(test_data$MMR.ms.units, test_data$Replicate, paired=TRUE, p.adjust.method = "none")
+
+
+```
+
+
+MMR doesnt test different from the UP but does for the LP at 21C.
+
+
+Attempt 2 (mixed effects model)
+
+First model uses a correlation structure to account that measurements closer together in time probably are more similar.  Other just does a simple repeated measures test.
+```{r}
+
+MMR_pairs_m.test1 <- gls(MMR.ms.units ~ Experiment*test.Num,
+                    data = spring_data,
+                    correlation = corAR1(form = ~test.Num|Ind)
+                    )
+
+MMR_pairs_m.test2 <- lme(MMR.ms.units ~Experiment*test.Num,
+                    data = spring_data,
+                    random = ~1|Ind
+                    )
+
+AIC(MMR_pairs_m.test1,MMR_pairs_m.test2)
+
+```
+Not different enough (AIC change < 2) to warrant one over the other, so go with random effects model to be consistent with SMR.
+
+
+```{r, rows.print=16}
+summary(MMR_pairs_m.test2)
+```
+
+
+```{r}
+anova(MMR_pairs_m.test2)
+```
+
+
+```{r}
+try_me <- emmeans(MMR_pairs_m.test2, ~test.Num|Experiment)
+
+contrast(try_me, method = list(c(1,0,0,-1)) )
+```
+
+Different outcome on Exp 4 (UP 23) than previously, but others are the same.  Again, suggests this approach might work as we scale up.
+
+
+
+
+##About correlation structures
+
+Is a simple repeated measures (by random effects intercept model) sufficient?
+
+What if we use nlme's correlation structures?  These are designed for accounting for correlations between repeated measures, etc.
+
+According to Zuur 2009:
+We technically have a serial correlation structure (repeated measurements through time).  The most simple of these structures is a compound symmetry structure - and that's pretty much identical as saying a random effect of individual fish.
+
+So, compound symmetry is a special case of sphericity - which is an underlying assumption of repeated measures that we're fairly certain is broken.  Because it's usually broken (Quinn & Keough).  What our task is, then, is to see if we can do better by using a different correlation structure.  Note, usually, using *any* correlation structure makes a big improvement if there are correlations in the residuals, but finding an *optimal* correlation structure doesn't make as strong of an improvement (Zuur 2009).
+
+It's probably not worth us trying to find an *optimal* correlation structure, but it is worth seeing if we get a serious improvement with a more sophisticated correlation structure - specifically, some kind of temporal autocorrelation.  Think of it this way - if we did our acute experiments except that all tests were done at one temperature, we'd still expect the 4th measurement to be more similar to the 3rd than the 1st - because of the repeated bouts of exercise, starvation over the days, etc.  This suggests we might have a temporal autocorrelation, rather than compound symmetry (where you assume equal covariance between all measurements).
+
+
+
+
+
+For starters, let's verify that random and corCompSymm are the same
+
+```{r}
+
+SMR_random_m <- lme(SMR.ms.units ~ Temp.factor)*Pond, 
+                    data = spring_data,
+                    random = ~1|Ind)
+
+SMR_corCompSymm_m <- gls(SMR.ms.units ~ Temp.factor*Pond,
+                         data = spring_data,
+                         correlation = corCompSymm(form = ~1|Ind))
+
+```
+
+
+```{r}
+summary(SMR_random_m)
+```
+
+
+
+```{r}
+summary(SMR_corCompSymm_m)
+```
+
+
+```{r}
+AIC(SMR_random_m,SMR_corCompSymm_m)
+```
+
+
+Looks pretty similar.
+
+
+
+
+Now let's try an auto-correlation model.  This one structures things so that test.Num gives a measure of the time, and FishIDs causes the time-series to be handled separately for every fish.
+
+```{r}
+
+SMR_corAR1_m <- gls(SMR.ms.units ~ Temp.factor*Pond,
+                    data = spring_data,
+                    correlation = corAR1(form = ~test.Num|Ind)
+                    )
+
+
+```
+
+```{r}
+summary(SMR_corAR1_m)
+```
+
+
+
+
+```{r}
+AIC(SMR_random_m,SMR_corCompSymm_m,SMR_corAR1_m)
+```
+
+
+Ok, shows that we should consider autocorrelation when we build the final model - but only if we don't average the first and last test.
+
+
+
+#Check for normality
+
+```{r}
+
+ggplot(spring_data, aes(sample=SMR.ms.units, group=interaction(Temp.factor, Pond))) +
+  stat_qq_line() + stat_qq_band() + stat_qq_point() +
+  labs(x = "Theoretical", y="Sample", title="Acute SMR") + 
+  facet_grid(rows = vars(Pond), cols = vars(Temp.factor))
+  
+```
+
+```{r}
+
+ggplot(spring_data, aes(sample=MMR.ms.units, group=interaction(Temp.factor, Pond))) +
+  stat_qq_line() + stat_qq_band() + stat_qq_point() +
+  labs(x = "Theoretical", y="Sample", title="Acute MMR") + 
+  facet_grid(rows = vars(Pond), cols = vars(Temp.factor))
+  
+```
+
+```{r}
+
+ggplot(spring_data, aes(sample=AS.ms.units, group=interaction(Temp.factor, Pond))) +
+  stat_qq_line() + stat_qq_band() + stat_qq_point() +
+  labs(x = "Theoretical", y="Sample", title="Acute AS") + 
+  facet_grid(rows = vars(Pond), cols = vars(Temp.factor))
+  
+```
+
+
+Ok, we do have one cell in the acute data that's not so normal, but we'll invoke the central limit theorem and call it good enough.
+
+
+
+```{r}
+
+ggplot(acclim_data, aes(sample=SMR.ms.units, group=interaction(Temp.factor, Stock))) +
+  stat_qq_line() + stat_qq_band() + stat_qq_point() +
+  labs(x = "Theoretical", y="Sample", title="Acclim SMR") + 
+  facet_grid(rows = vars(Stock), cols = vars(Temp.factor))
+  
+```
+
+```{r}
+
+ggplot(acclim_data, aes(sample=MMR.ms.units, group=interaction(Temp.factor, Stock))) +
+  stat_qq_line() + stat_qq_band() + stat_qq_point() +
+  labs(x = "Theoretical", y="Sample", title="Acclim MMR") + 
+  facet_grid(rows = vars(Stock), cols = vars(Temp.factor))
+  
+```
+
+```{r}
+
+ggplot(acclim_data, aes(sample=AS.ms.units, group=interaction(Temp.factor, Stock))) +
+  stat_qq_line() + stat_qq_band() + stat_qq_point() +
+  labs(x = "Theoretical", y="Sample", title="Acclim AS") + 
+  facet_grid(rows = vars(Stock), cols = vars(Temp.factor))
+  
+```
+
+
+
+#Acute models
+
+Following the protocol from Zuur 2009 Chap 7.
+
+
+##SMR
+
+Start with a linear model.
+```{r}
+acute_SMR_gls <- gls(SMR.ms.units ~ Temp.factor*Pond, data = spring_data)
+
+plot(acute_SMR_gls)
+
+```
+
+We don't detect much heterogeneity, so we move on to the correlation/random effects issues.
+
+
+We have repeated measures, so we need some kind of indicator that data from the same fish are related.  We saw in the exploration that a random effects model or a model with a correlated errors could help here.  Now we compare all of these formally.  Note that since we're data-limited, we can just do everything - so these are the 5 best choices
+```{r}
+Form <- formula(SMR.ms.units ~ Temp.factor*Pond)
+
+#random intercept
+acute_SMR_m1 <- lme(Form, data=spring_data, random=~1|Ind)
+
+#random intercept accounting for experiment
+acute_SMR_m2 <- lme(Form, data=spring_data, random=~1|Experiment/Ind)
+
+#random slopes - abandoned because not enough data for convergence
+#acute_SMR_m3 <- lme(Form, data=acute_data, random=~Temp.factor|FishIDs)
+
+#random slopes accounting for experiment
+#abandoned because if previous doesn't converge, this won't either (even more complicated!)
+#acute_SMR_m4 <- lme(Form, data=acute_data, random=~Temp.factor|Experiment/FishIDs)
+
+
+AIC(acute_SMR_gls, acute_SMR_m1, acute_SMR_m2)
+
+
+```
+
+So, including random effect helps (not a surprise), and we have evidence that including FishIDs nested within experiments doesn't add any benefit.
+
+
+Next, we deal with the potential auto-correlation issue.
+```{r}
+#including auto-correlation
+acute_SMR_m5 <- lme(Form, data=spring_data, random=~1|Ind, correlation=corAR1(form = ~test.Num|Ind))
+
+AIC(acute_SMR_m2, acute_SMR_m5)
+```
+
+Not much improvement here stick with m2
+
+
+Next, we find the optimal fixed effect structure.
+```{r}
+summary(acute_SMR_m2)
+```
+
+```{r}
+anova(acute_SMR_m2)
+```
+
+Interaction is insignificant, so we can check to drop terms.
+```{r}
+acute_MMR_m1.Full <- lme(SMR.ms.units ~ Temp.factor*Pond, data=spring_data, random=~1|Experiment/Ind, method="ML")
+
+acute_MMR_m1.1 <- lme(SMR.ms.units ~ Temp.factor + Pond, data=spring_data, random=~1|Experiment/Ind, method="ML")
+
+anova(acute_MMR_m1.Full, acute_MMR_m1.1)
+```
+ This indicates that we can potentially drop pond
+
+```{r}
+Form <- formula(SMR.ms.units ~ as.factor(Temp.factor))
+acute_SMR_m2.1 <- lme(Form, data=spring_data, random=~1|Experiment/Ind, correlation=corAR1(form = ~test.Num|Experiment/Ind))
+```
+
+```{r}
+summary(acute_SMR_m2.1)
+```
+```{r}
+AIC(acute_SMR_m2.1)
+```
+
+```{r}
+anova(acute_SMR_m2.1)
+```
+Our final model is the one that allows for random intercepts across individuals, and accounts for temporal auto-correlation within each individual.
+
+To verify, check residuals again.
+
+```{r}
+plot(acute_SMR_m2.1)
+```
+
+These look pretty good.
+
+
+Do post hoc tests.
+
+```{r}
+acute_SMR_emm1 <- emmeans(acute_SMR_m2.1, specs = pairwise ~Temp.factor, adjust="holm")
+
+acute_SMR_emm1
+```
+
+##MMR
+
+Now repeat for MMR
+
+Start with a linear model.
+```{r}
+acute_MMR_gls <- gls(MMR.Best.ms.units ~ Temp.factor*Pond, data = spring_data)
+
+plot(acute_MMR_gls)
+
+```
+
+We don't detect much heterogeneity, so we move on to the correlation/random effects issues.
+
+
+We have repeated measures, so we need some kind of indicator that data from the same fish are related.  We saw in the exploration that a random effects model or a model with a correlated errors could help here.  Now we compare all of these formally.  Note that since we're data-limited, we can just do everything - so these are the 5 best choices
+```{r}
+Form <- formula(MMR.Best.ms.units ~ as.factor(Temp.factor)*Pond)
+
+#random intercept
+acute_MMR_m1 <- lme(Form, data=spring_data, random=~1|Ind)
+
+#random intercept accounting for experiment
+acute_MMR_m2 <- lme(Form, data=spring_data, random=~1|Experiment/Ind)
+
+#random slopes - abandoned because not enough data for convergence
+#acute_MMR_m3 <- lme(Form, data=acute_data, random=~Temp.factor|FishIDs)
+
+#random slopes accounting for experiment
+#abandoned because if previous doesn't converge, this won't either (even more complicated!)
+#acute_SMR_m4 <- lme(Form, data=acute_data, random=~Temp.factor|Experiment/FishIDs)
+
+
+AIC(acute_MMR_gls, acute_MMR_m1, acute_MMR_m2)
+
+
+```
+
+So, not a whole lot of difference here, no matter what.  We choose to keep FishIDs as a random intercept based on knowledge of how our data is structured.
+
+
+
+Next, we deal with the potential auto-correlation issue.
+```{r}
+#including auto-correlation
+acute_MMR_m5 <- lme(Form, data=spring_data, random=~1|Ind, correlation=corAR1(form = ~test.Num|Ind))
+
+AIC(acute_MMR_m1, acute_MMR_m5)
+```
+
+No improvement, so we opt out.
+
+
+Next, we find the optimal fixed effect structure.
+```{r}
+summary(acute_MMR_m1)
+```
+
+```{r}
+anova(acute_MMR_m1)
+```
+
+Interaction is significant
+
+
+Now we look at the one-way effects.
+```{r}
+summary(acute_MMR_m1)
+
+```
+
+
+
+
+
+So, our final model is the one that allows for random intercepts across individuals, and does not include the interaction term (we find that temperature response causes MMR to change in the same way across stocks).
+
+Fit the final model with REML:
+```{r}
+acute_MMR_final <- lme(MMR.Best.ms.units ~ as.factor(Temp.factor)*Pond, data=spring_data, random=~1|Ind)
+
+summary(acute_MMR_final)
+```
+
+
+To verify, check residuals again.
+
+```{r}
+plot(acute_MMR_final)
+```
+
+These look pretty weird.
+
+Do the anova.
+```{r}
+anova(acute_MMR_final)
+```
+
+
+Do post hoc tests.
+
+```{r}
+acute_MMR_emm1 <- emmeans(acute_MMR_final, specs = pairwise ~as.factor(Temp.factor)*Pond, adjust="holm")
+
+acute_MMR_emm1
+```
+
+
+##AS
+
+Start with a linear model.
+```{r}
+acute_AS_gls <- gls(AS.Best.ms.units ~ Temp.factor*Stock, data = spring_data)
+
+plot(acute_AS_gls)
+
+```
+
+We don't detect much heterogeneity, so we move on to the correlation/random effects issues.
+
+
+We have repeated measures, so we need some kind of indicator that data from the same fish are related.  We saw in the exploration that a random effects model or a model with a correlated errors could help here.  Now we compare all of these formally.  Note that since we're data-limited, we can just do everything - so these are the 5 best choices
+```{r}
+Form <- formula(AS.Best.ms.units ~ as.factor(Temp.factor)*Pond)
+
+#random intercept
+acute_AS_m1 <- lme(Form, data=spring_data, random=~1|Ind)
+
+#random intercept accounting for experiment
+acute_AS_m2 <- lme(Form, data=spring_data, random=~1|Experiment/Ind)
+
+#random slopes - abandoned because not enough data for convergence
+#acute_AS_m3 <- lme(Form, data=acute_data, random=~Temp.factor|FishIDs)
+
+#random slopes accounting for experiment
+#abandoned because if previous doesn't converge, this won't either (even more complicated!)
+#acute_AS_m4 <- lme(Form, data=acute_data, random=~Temp.factor|Experiment/FishIDs)
+
+
+AIC(acute_AS_gls, acute_AS_m1, acute_AS_m2)
+
+
+```
+
+So, not a whole lot of difference here, no matter what.  We choose to keep FishIDs as a random intercept based on knowledge of our experiment design.
+
+
+
+Next, we deal with the potential auto-correlation issue.
+```{r}
+#including auto-correlation
+acute_AS_m5 <- lme(Form, data=spring_data, random=~1|Ind, correlation=corAR1(form = ~test.Num|Ind))
+
+AIC(acute_AS_m1,acute_AS_m2, acute_AS_m5)
+```
+
+As in MMR, temporal auto-correlation doesn't seem to be an issue here.  We opt out.
+
+
+Next, we find the optimal fixed effect structure.
+```{r}
+summary(acute_AS_m2)
+```
+
+```{r}
+anova(acute_AS_m2)
+```
+
+Interaction is significant, so we cant drop.
+
+
+Next we check the one-way terms.
+
+```{r}
+summary(acute_AS_m2)
+```
+```{r}
+anova(acute_AS_m2)
+```
+
+
+
+```{r}
+acute_AS_m1.1.1 <- lme(AS.ms.units ~ Temp.factor, data=spring_data, random=~1|Ind, method="ML")
+anova(acute_AS_m2, acute_AS_m1.1.1)
+```
+
+
+```{r}
+summary(acute_AS_m2)
+```
+
+Stock is highly significant, so we can't drop it.
+
+
+Our final model is the one that allows for random intercepts across individuals, and finds a difference in AS over stocks.
+
+Refit final model with REML and verify the residuals.
+```{r}
+acute_AS_final <- lme(AS.Best.ms.units ~ as.factor(Temp.factor)*Pond, data=spring_data, random=~1|Experiment/Ind)
+
+plot(acute_AS_final)
+```
+
+These look a bit odd, but unclear what else could be done.
+
+
+
+```{r}
+summary(acute_AS_final)
+```
+
+
+```{r}
+acute_AS_emm1 <- emmeans(acute_AS_final, specs = pairwise ~as.factor(Temp.factor)*Pond, adjust="holm")
+
+acute_MMR_emm1
+```
+
+For each of the test temperatures in SMR,MMR, and AS we see significant differences but no effects from differences in stocks
+
+
+
+#Acclimated models
+
+##SMR
+
+Start with a linear model.
+```{r}
+acclim_SMR_gls <- gls(SMR.ms.units ~ Temp.factor*Stock, data = acclim_data)
+
+plot(acclim_SMR_gls)
+
+```
+
+We see some heterogeneity, but not much.  Left and right extremes are pretty similar, and we know there's a few outliers.  Let's run with it.
+
+Next, we don't need to account for individual or time here (we only have 1 test per individual), but we should check to see if experiment unit has an effect.
+
+```{r}
+Form <- formula(SMR.ms.units ~ Temp.factor*Stock)
+
+acclim_SMR_m1 <- lme(Form, data = acclim_data, random=~1|Experiment)
+
+AIC(acclim_SMR_gls, acclim_SMR_m1)
+
+
+```
+
+Matters here - that's odd, considering it didn't matter in the acute sets.
+
+```{r}
+plot(acclim_SMR_m1)
+```
+
+These residuals look worse - there's some heterogeneity, and looks like spread decreases left to right.
+
+Let's see if we can figure out what's going on.
+
+
+Check experiment units in acclimated data.  Do MMR and AS at the same time just in case.
+
+```{r, fig.width=6, fig.height=8}
+
+grid.arrange(
+  ggplot(filter(acclim_data, acclim_data$Stock=="LP"),
+         aes(x=Temp.factor, y=SMR.ms.units, color=Experiment)) +
+    geom_boxplot() + theme(legend.position="none") + 
+    ggtitle("LP") + ylim(0.5,4.5),
+  
+  ggplot(filter(acclim_data, acclim_data$Stock=="UP"),
+         aes(x=Temp.factor, y=SMR.ms.units, color=Experiment)) +
+    geom_boxplot() + theme(legend.position="none") + 
+    ggtitle("UP") + ylim(0.5,4.5),
+  
+  ggplot(filter(acclim_data, acclim_data$Stock=="LP"),
+         aes(x=Temp.factor, y=MMR.ms.units, color=Experiment)) +
+    geom_boxplot() + theme(legend.position="none") + ylim(3.5,13),
+  
+  ggplot(filter(acclim_data, acclim_data$Stock=="UP"),
+         aes(x=Temp.factor, y=MMR.ms.units, color=Experiment)) +
+    geom_boxplot() + theme(legend.position="none") + ylim(3.5,13),
+  
+  ggplot(filter(acclim_data, acclim_data$Stock=="LP"),
+         aes(x=Temp.factor, y=AS.ms.units, color=Experiment)) +
+    geom_boxplot() + theme(legend.position="none") + ylim(2.5,9.5),
+  
+  ggplot(filter(acclim_data, acclim_data$Stock=="UP"),
+         aes(x=Temp.factor, y=AS.ms.units, color=Experiment)) +
+    geom_boxplot() + theme(legend.position="none") + ylim(2.5,9.5),
+  
+  ncol=2)
+  
+```
+
+Ok, we do see big differences across experiments.  But, given that we only have 2 experiments for each cell with 3-4 fish per cell, and we know that interspecific variation in MR data is pretty large, we might want to pool experiments.
+
+Check for causes of heterogeneity.
+
+```{r, fig.width=8, fig.height=6}
+
+grid.arrange(
+  ggplot(acclim_data, aes(x=Temp.factor, y=resid(acclim_SMR_m1))) +
+    geom_boxplot() + ggtitle("Test Temp") + theme(legend.position="none"),# + ylim(0.5,4.5),
+  
+  ggplot(acclim_data, aes(x=Stock, y=resid(acclim_SMR_m1))) +
+    geom_boxplot() + ggtitle("Stock") + theme(legend.position="none"),# + ylim(0.5,4.5),
+  
+  ggplot(acclim_data, aes(x=Temp.factor, y=resid(acclim_SMR_m1), color=Stock)) +
+    geom_boxplot() + theme(legend.position="none"),# + ylim(0.5,4.5),
+  
+  ggplot(acclim_data, aes(x=Stock, y=resid(acclim_SMR_m1), color=Temp.factor)) +
+    geom_boxplot() + theme(legend.position="none"),# + ylim(0.5,4.5),
+  
+  ncol=2)
+  
+```
+
+```{r, fig.width=8, fig.height=3}
+
+grid.arrange(
+  ggplot(acclim_data, aes(x=fitted(acclim_SMR_m1), y=residuals(acclim_SMR_m1), color=Temp.factor)) +
+    geom_point(alpha = 0.4) + ggtitle("Test Temp") + theme(legend.position="none"),# + ylim(0.5,4.5),
+  
+  ggplot(acclim_data, aes(x=fitted(acclim_SMR_m1), y=residuals(acclim_SMR_m1), color=Stock)) +
+    geom_point(alpha = 0.4) + ggtitle("Stock") + theme(legend.position="none"),# + ylim(0.5,4.5),
+  
+  ncol=2)
+  
+```
+
+Looks like variance across LP vs UP is likely the bigger issue (extreme residuals all come from LP), though there are differences in variance across temperatures too (21 has lower variance).
+
+
+Let's also confirm that the variance with "Experiment" isn't caused by something else - namely, the temperature.  We already showed that there isn't a clear relationship between MR and real temperature, but let's make sure that the real temperatures don't cluster by experiment.
+
+
+```{r, fig.width=8, fig.height=3}
+
+grid.arrange(
+  ggplot(acclim_data, 
+         aes(x = Experiment, y = testTemp.Real, color = Temp.factor)) +
+    geom_boxplot() + theme(legend.position="none") + ggtitle("Temp"),
+  
+  ggplot(acclim_data, 
+         aes(x = Experiment, y = testTemp.Real, color = Stock)) +
+    geom_boxplot() + theme(legend.position="none") + ggtitle("Stock"),
+  
+  
+  ncol=2
+)
+
+```
+
+Ok, so the temperature is pretty consistent across groups of experiments for the 23 and 25 acclimations, but there's one outlier group at 21 degrees.
+
+
+
+
+So, we've got a choice to make here.  We can include experiment as a random effect due to the AIC score, but in doing so, we make the residuals worse and have to introduce a variance structure.  Doesn't seem like there's an easy correct answer right now.
+
+Let's try adding variance structures and see what happens.
+
+
+
+
+```{r}
+acclim_SMR_gls.1 <- gls(SMR.ms.units ~ Temp.factor*Stock, data = acclim_data, 
+                      weights = varIdent(form = ~1|Stock))
+
+acclim_SMR_gls.2 <- gls(SMR.ms.units ~ Temp.factor*Stock, data = acclim_data, 
+                      weights = varIdent(form = ~1|Temp.factor))
+
+acclim_SMR_gls.3 <- gls(SMR.ms.units ~ Temp.factor*Stock, data = acclim_data, 
+                      weights = varIdent(form = ~1|Stock*Temp.factor))
+
+acclim_SMR_m1.1 <- lme(SMR.ms.units ~ Temp.factor*Stock, data = acclim_data, random = ~1|Experiment,
+                      weights = varIdent(form = ~1|Stock))
+
+acclim_SMR_m1.2 <- lme(SMR.ms.units ~ Temp.factor*Stock, data = acclim_data, random = ~1|Experiment,
+                      weights = varIdent(form = ~1|Temp.factor))
+
+acclim_SMR_m1.3 <- lme(SMR.ms.units ~ Temp.factor*Stock, data = acclim_data, random = ~1|Experiment,
+                      weights = varIdent(form = ~1|Stock*Temp.factor))
+
+AIC(acclim_SMR_gls, acclim_SMR_gls.1, acclim_SMR_gls.2, acclim_SMR_gls.3, 
+    acclim_SMR_m1, acclim_SMR_m1.1, acclim_SMR_m1.2, acclim_SMR_m1.3)
+```
+
+By AIC scores alone, we have two candidates (m1.1, m1.3).  m1.1 seems best on first glance, because it's simpler.  But, let's check the residuals.  Include the next best model by AIC score, too, for comparison.
+
+```{r, fig.width=8, fig.height=6}
+grid.arrange(
+  plot(acclim_SMR_m1.1),
+  plot(acclim_SMR_m1.3),
+  plot(acclim_SMR_gls.1),
+  ncol=2)
+```
+
+Of the two tied models, the more complex one has much better residuals.  But, the 3rd option still looks pretty good - at least as good as m1.3.  Since it's simpler, I'm still leaning toward it.
+
+As a whole, I think we'll likely need more experiments in order to resolve this issue.  As such, I'll fit both models below as templates.
+
+###SMR v1 (simpler model, good residuals but higher AIC score)
+
+We already have dealt with random effects and heterogeneity, so now we find the optimal fixed effect structure.
+```{r}
+summary(acclim_SMR_gls.1)
+```
+
+```{r}
+anova(acclim_SMR_gls.1)
+```
+
+Interaction is significant, so we stop here and do post hoc tests.
+
+```{r}
+acclim_SMR_gls.1.emm1 <- emmeans(acclim_SMR_gls.1, specs = pairwise ~ Temp.factor|Stock, adjust="holm")
+
+acclim_SMR_gls.1.emm1
+```
+
+```{r}
+acclim_SMR_gls.1.emm2 <- emmeans(acclim_SMR_gls.1, specs = pairwise ~ Stock|Temp.factor, adjust="holm")
+
+acclim_SMR_gls.1.emm2
+```
+
+
+
+###SMR v2 (complex model, better AIC but worse-ish residuals)
+
+Again, we've already accounted for random factors and heterogeneity, so we now look at fixed effects.
+
+```{r}
+summary(acclim_SMR_m1.3)
+```
+
+```{r}
+anova(acclim_SMR_m1.3)
+```
+
+Interaction is not significant (and nothing else is...that doesn't seem right.  More evidence against this model?).
+
+```{r}
+acclim_SMR_m1.3.Full <- lme(SMR.ms.units ~ Temp.factor*Stock, data = acclim_data, random = ~1|Experiment,
+                      weights = varIdent(form = ~1|Stock*Temp.factor), method = "ML")
+
+acclim_SMR_m1.3.1 <- lme(SMR.ms.units ~ Temp.factor+Stock, data = acclim_data, random = ~1|Experiment,
+                      weights = varIdent(form = ~1|Stock*Temp.factor), method = "ML")
+
+anova(acclim_SMR_m1.3.Full, acclim_SMR_m1.3.1)
+
+```
+
+Confirms we can drop the interaction.  Check for more factors.
+
+```{r}
+summary(acclim_SMR_m1.3.1)
+
+```
+Possibly can drop Stock, and maybe Temp.factor.  Check.
+
+```{r}
+acclim_SMR_m1.3.2 <- lme(SMR.ms.units ~ Temp.factor, data = acclim_data, random = ~1|Experiment,
+                      weights = varIdent(form = ~1|Stock*Temp.factor), method = "ML")
+
+acclim_SMR_m1.3.3 <- lme(SMR.ms.units ~ Stock, data = acclim_data, random = ~1|Experiment,
+                      weights = varIdent(form = ~1|Stock*Temp.factor), method = "ML")
+
+```
+
+```{r}
+anova(acclim_SMR_m1.3.1, acclim_SMR_m1.3.2)
+```
+```{r}
+anova(acclim_SMR_m1.3.1, acclim_SMR_m1.3.3)
+```
+
+First version is least significant, indicating we can drop Stock.
+
+```{r}
+summary(acclim_SMR_m1.3.2)
+```
+
+
+Nothing is significant, which means we could drop the temperature term, too. Check.
+
+```{r}
+acclim_SMR_m1.3.4 <- lme(SMR.ms.units ~ 1, data = acclim_data, random = ~1|Experiment,
+                      weights = varIdent(form = ~1|Stock*Temp.factor), method = "ML")
+```
+
+
+```{r}
+anova(acclim_SMR_m1.3.2, acclim_SMR_m1.3.4)
+```
+
+We could drop Temp.factor, and we're left with only an intercept.  Refit now with REML, and check residuals.
+
+```{r}
+acclim_SMR_m1.3.4.REML <- lme(SMR.ms.units ~ 1, data = acclim_data, random = ~1|Experiment,
+                      weights = varIdent(form = ~1|Stock*Temp.factor))
+```
+
+```{r, fig.width=8, fig.height=3}
+grid.arrange(
+  plot(acclim_SMR_m1.3.4.REML),
+  plot(acclim_SMR_gls.1),
+  ncol=2)
+```
+
+The residuals don't look as good as they do in the gls model (clumpier, and more variation in spread).  So, we keep this analysis as a reference and a potential template for later, but opt for the first version of the SMR model for now.
+
+
+
+##MMR
+
+Start with a linear model.
+```{r}
+acclim_MMR_gls <- gls(MMR.ms.units ~ Temp.factor*Stock, data = acclim_data)
+
+plot(acclim_MMR_gls)
+
+```
+
+Possibly a little heterogeneity - if the group on the right is all from one category.  Let's check.
+
+```{r, fig.width=6, fig.height=4}
+
+grid.arrange(
+  ggplot(acclim_data, aes(x=Temp.factor, y=resid(acclim_MMR_gls))) +
+    geom_boxplot() + ggtitle("Test Temp") + theme(legend.position="none"),# + ylim(0.5,4.5),
+  
+  ggplot(acclim_data, aes(x=Stock, y=resid(acclim_MMR_gls))) +
+    geom_boxplot() + ggtitle("Stock") + theme(legend.position="none"),# + ylim(0.5,4.5),
+  
+  ggplot(acclim_data, aes(x=Temp.factor, y=resid(acclim_MMR_gls), color=Stock)) +
+    geom_boxplot() + theme(legend.position="none"),# + ylim(0.5,4.5),
+  
+  ggplot(acclim_data, aes(x=Stock, y=resid(acclim_MMR_gls), color=Temp.factor)) +
+    geom_boxplot() + theme(legend.position="none"),# + ylim(0.5,4.5),
+  
+  ncol=2)
+  
+```
+
+```{r, fig.width=8, fig.height=3}
+
+grid.arrange(
+  ggplot(acclim_data, aes(x=fitted(acclim_MMR_gls), y=residuals(acclim_MMR_gls), color=Temp.factor)) +
+    geom_point(alpha = 0.4) + ggtitle("Test Temp") + theme(legend.position="none"),# + ylim(0.5,4.5),
+  
+  ggplot(acclim_data, aes(x=fitted(acclim_MMR_gls), y=residuals(acclim_MMR_gls), color=Stock)) +
+    geom_point(alpha = 0.4) + ggtitle("Stock") + theme(legend.position="none"),# + ylim(0.5,4.5),
+  
+  ncol=2)
+  
+```
+
+Possibly some heterogeneity due to Stock.  We saw this earlier with SMR, too.  So, let's check random effects and variance.
+
+```{r}
+acclim_MMR_gls.1 <- gls(MMR.ms.units ~ Temp.factor*Stock, data = acclim_data, 
+                        weights = varIdent(form = ~1|Stock))
+
+acclim_MMR_m1 <- lme(MMR.ms.units ~ Temp.factor*Stock, data = acclim_data, random = ~1|Experiment)
+
+acclim_MMR_m1.1 <- lme(MMR.ms.units ~ Temp.factor*Stock, data = acclim_data, random = ~1|Experiment,
+                       weights = varIdent(form = ~1|Stock))
+
+AIC(acclim_MMR_gls, acclim_MMR_gls.1, acclim_MMR_m1, acclim_MMR_m1.1)
+```
+
+These are all pretty similar.  We'll go with the simple GLS model.
+
+
+Now, check fixed effects.
+```{r}
+summary(acclim_MMR_gls)
+```
+
+```{r}
+anova(acclim_MMR_gls)
+```
+
+We can probably drop the interaction term.  Verify.
+
+```{r}
+acclim_MMR_gls.Full <- gls(MMR.ms.units ~ Temp.factor*Stock, data = acclim_data, method = "ML")
+
+acclim_MMR_gls.2 <- gls(MMR.ms.units ~ Temp.factor+Stock, data = acclim_data, method = "ML")
+
+anova(acclim_MMR_gls.Full, acclim_MMR_gls.2)
+```
+
+Confirms that we can drop the interaction term.
+
+Is there anything else?
+```{r}
+summary(acclim_MMR_gls.2)
+```
+Possibly can drop the temperature term.  Check.
+
+```{r}
+acclim_MMR_gls.3 <- gls(MMR.ms.units ~ Stock, data = acclim_data, method = "ML")
+
+anova(acclim_MMR_gls.2, acclim_MMR_gls.3)
+```
+Confirms we can drop the temperature term.
+
+Check for anything else.
+```{r}
+summary(acclim_MMR_gls.3)
+```
+
+Stock is highly significant, so we're done.
+
+Fit final model with REML.
+```{r}
+acclim_MMR_gls.Final <- gls(MMR.ms.units ~ Stock, data = acclim_data)
+
+summary(acclim_MMR_gls.Final)
+```
+
+Verify residuals.
+```{r}
+plot(acclim_MMR_gls.Final)
+```
+
+Fine.
+
+We don't need to do any post hoc tests, since above compares the two levels of Stock.
+
+
+##AS
+
+Start with a linear model.
+```{r}
+acclim_AS_gls <- gls(AS.ms.units ~ Temp.factor*Stock, data = acclim_data)
+
+plot(acclim_AS_gls)
+
+```
+
+Some heterogeneity.  Let's check.
+
+```{r, fig.width=6, fig.height=4}
+
+grid.arrange(
+  ggplot(acclim_data, aes(x=Temp.factor, y=resid(acclim_AS_gls))) +
+    geom_boxplot() + ggtitle("Test Temp") + theme(legend.position="none"),# + ylim(0.5,4.5),
+  
+  ggplot(acclim_data, aes(x=Stock, y=resid(acclim_AS_gls))) +
+    geom_boxplot() + ggtitle("Stock") + theme(legend.position="none"),# + ylim(0.5,4.5),
+  
+  ggplot(acclim_data, aes(x=Temp.factor, y=resid(acclim_AS_gls), color=Stock)) +
+    geom_boxplot() + theme(legend.position="none"),# + ylim(0.5,4.5),
+  
+  ggplot(acclim_data, aes(x=Stock, y=resid(acclim_AS_gls), color=Temp.factor)) +
+    geom_boxplot() + theme(legend.position="none"),# + ylim(0.5,4.5),
+  
+  ncol=2)
+  
+```
+
+```{r, fig.width=8, fig.height=3}
+
+grid.arrange(
+  ggplot(acclim_data, aes(x=fitted(acclim_AS_gls), y=residuals(acclim_AS_gls), color=Temp.factor)) +
+    geom_point(alpha = 0.4) + ggtitle("Test Temp") + theme(legend.position="none"),# + ylim(0.5,4.5),
+  
+  ggplot(acclim_data, aes(x=fitted(acclim_AS_gls), y=residuals(acclim_AS_gls), color=Stock)) +
+    geom_point(alpha = 0.4) + ggtitle("Stock") + theme(legend.position="none"),# + ylim(0.5,4.5),
+  
+  ncol=2)
+  
+```
+
+Possibly some heterogeneity across temperatures & stocks.  So, let's check random effects and variance.
+
+
+
+
+```{r}
+acclim_AS_gls.1 <- gls(AS.ms.units ~ Temp.factor*Stock, data = acclim_data, 
+                        weights = varIdent(form = ~1|Stock))
+
+acclim_AS_gls.2 <- gls(AS.ms.units ~ Temp.factor*Stock, data = acclim_data, 
+                        weights = varIdent(form = ~1|Temp.factor))
+
+acclim_AS_gls.3 <- gls(AS.ms.units ~ Temp.factor*Stock, data = acclim_data, 
+                        weights = varIdent(form = ~1|Temp.factor*Stock))
+
+acclim_AS_m1 <- lme(AS.ms.units ~ Temp.factor*Stock, data = acclim_data, random = ~1|Experiment)
+
+acclim_AS_m1.1 <- lme(AS.ms.units ~ Temp.factor*Stock, data = acclim_data, random = ~1|Experiment,
+                       weights = varIdent(form = ~1|Stock))
+
+acclim_AS_m1.2 <- lme(AS.ms.units ~ Temp.factor*Stock, data = acclim_data, random = ~1|Experiment,
+                       weights = varIdent(form = ~1|Temp.factor))
+
+acclim_AS_m1.3 <- lme(AS.ms.units ~ Temp.factor*Stock, data = acclim_data, random = ~1|Experiment,
+                       weights = varIdent(form = ~1|Temp.factor*Stock))
+
+
+
+AIC(acclim_AS_gls, acclim_AS_gls.1, acclim_AS_gls.2, acclim_AS_gls.3,
+    acclim_AS_m1, acclim_AS_m1.1, acclim_AS_m1.2, acclim_AS_m1.3)
+```
+
+These are all pretty similar.  We'll go with one of the first two - simplest.  AIC is just under 2, so there's no easy winner.  Let's check the residuals.
+
+```{r, fig.width=8, fig.height=3}
+grid.arrange(
+  plot(acclim_AS_gls),
+  plot(acclim_AS_gls.1),
+  ncol=2
+)
+```
+
+Second is slightly better.
+
+
+
+Now, check fixed effects.
+```{r}
+summary(acclim_AS_gls.1)
+```
+
+```{r}
+anova(acclim_AS_gls.1)
+```
+
+We can drop the interaction term.  Verify.
+
+```{r}
+acclim_AS_gls.1.Full <- gls(AS.ms.units ~ Temp.factor*Stock, data = acclim_data, 
+                            weights = varIdent(form = ~1|Stock), method = "ML")
+
+acclim_AS_gls.1.1 <- gls(AS.ms.units ~ Temp.factor+Stock, data = acclim_data, 
+                         weights = varIdent(form = ~1|Stock), method = "ML")
+
+anova(acclim_AS_gls.1.Full, acclim_AS_gls.1.1)
+```
+
+Confirms that we can drop the interaction term.
+
+Is there anything else?
+```{r}
+summary(acclim_AS_gls.1.1)
+```
+Possibly can drop the temperature term.  Check.
+
+```{r}
+acclim_AS_gls.1.2 <- gls(AS.ms.units ~ Stock, data = acclim_data, 
+                          weights = varIdent(form = ~1|Stock), method = "ML")
+
+anova(acclim_AS_gls.1.1, acclim_AS_gls.1.2)
+```
+Confirms we can drop the temperature term.
+
+Check for anything else.
+```{r}
+summary(acclim_AS_gls.1.2)
+```
+
+Stock is highly significant, so we're done.
+
+Fit final model with REML.
+```{r}
+acclim_AS_gls.Final <- gls(AS.ms.units ~ Stock, data = acclim_data, weights = varIdent(form = ~1|Stock))
+
+summary(acclim_AS_gls.Final)
+```
+
+Verify residuals.
+```{r}
+plot(acclim_AS_gls.Final)
+```
+
+Looks ok.
+
+We don't need to do any post hoc tests, since above compares the two levels of Stock.
+
+
+
+#Compare acute & acclimated
+
+We want to compare results of acute and acclimated trials for each case.  This is done with simple t-tests in Norin et al. 2014, but only done qualitatively in Lapointe et al. 2018.  
+
+
+Make a df with the data organized to make data handling here easier.
+
+Find the mean of the repeat 21 and 23 degrees trials
+```{r}
+  
+acute_avg <- aggregate(cbind(SMR.ms.units, MMR.Best.ms.units, AS.Best.ms.units) ~ 
+                            Ind*Temp.factor*Stock*Experiment, 
+                          data = spring_data, mean)
+
+acute_avg$Trial <- rep(c("Acute"), times=96)
+acute_avg$Temp.factor<-as.factor(acute_avg$Temp.factor)
+```
+
+```{r}
+comp_data <- rbind(acute_avg, select(Trial, Ind, Temp.factor, Stock, Experiment,
+                                     SMR.ms.units, MMR.Best.ms.units, AS.Best.ms.units))
+
+comp_data$Trial <- as.factor(comp_data$Trial)
+
+```
+
+
+Plot as a point of reference for analyses below.
+
+```{r, fig.width=8, fig.height=6}
+
+grid.arrange(
+  ggplot(filter(acute_avg, acute_avg$Stock=="LP"), 
+         aes(x = Temp.factor, y = SMR.ms.units, color=Trial)) 
+    + geom_boxplot() + ggtitle("LP, SMR") + theme(legend.position="none") + ylim(-0.5,8),
+  
+  ggplot(filter(acute_avg, acute_avg$Stock=="LP"), 
+         aes(x = Temp.factor, y = MMR.Best.ms.units, color=Trial)) 
+    + geom_boxplot() + ggtitle("LP, MMR") + theme(legend.position="none") + ylim(5,13.5),
+  
+  ggplot(filter(acute_avg, acute_avg$Stock=="LP"), 
+         aes(x = Temp.factor, y = AS.Best.ms.units, color=Trial)) 
+    + geom_boxplot() + ggtitle("LP, AS") + theme(legend.position="none") + ylim(1.5,10),
+  
+  ggplot(filter(acute_avg, acute_avg$Stock=="UP"), 
+         aes(x = Temp.factor, y = SMR.ms.units, color=Trial)) 
+    + geom_boxplot() + ggtitle("UP, SMR") + theme(legend.position="none") + ylim(-0.5,8),
+  
+  ggplot(filter(acute_avg, acute_avg$Stock=="UP"), 
+         aes(x = Temp.factor, y = MMR.Best.ms.units, color=Trial)) 
+    + geom_boxplot() + ggtitle("UP, MMR") + theme(legend.position="none") + ylim(5,13.5),
+  
+  ggplot(filter(acute_avg, acute_avg$Stock=="UP"), 
+         aes(x = Temp.factor, y = AS.Best.ms.units, color=Trial)) 
+    + geom_boxplot() + ggtitle("UP, AS") + theme(legend.position="none") + ylim(1.5,10),
+  
+  ncol=3
+)
+
+```
+Acclim = red, Acute = blue
+
+
+##Option 1 - simple t-tests
+(As in Norin et al. 2014)
+
+###SMR
+
+SMR, LP 21
+```{r}
+test_data <- comp_data %>%
+  
+  filter(Stock == "LP" & Temp.factor == "21")
+  
+pairwise.t.test(test_data$SMR.ms.units, test_data$Trial, paired=FALSE, p.adjust.method = "none")
+
+
+```
+
+
+
+SMR, LP 23
+```{r}
+test_data <- comp_data %>%
+  
+  filter(Stock == "LP" & Temp.factor == "23")
+  
+pairwise.t.test(test_data$SMR.ms.units, test_data$Trial, paired=FALSE, p.adjust.method = "none")
+
+
+```
+
+
+
+SMR, LP 25
+```{r}
+test_data <- comp_data %>%
+  
+  filter(Stock == "LP" & Temp.factor == "25")
+  
+pairwise.t.test(test_data$SMR.ms.units, test_data$Trial, paired=FALSE, p.adjust.method = "none")
+
+
+```
+
+
+
+
+SMR, UP 21
+```{r}
+test_data <- comp_data %>%
+  
+  filter(Stock == "UP" & Temp.factor == "21")
+  
+pairwise.t.test(test_data$SMR.ms.units, test_data$Trial, paired=FALSE, p.adjust.method = "none")
+
+
+```
+
+
+
+SMR, UP 23
+```{r}
+test_data <- comp_data %>%
+  
+  filter(Stock == "UP" & Temp.factor == "23")
+  
+pairwise.t.test(test_data$SMR.ms.units, test_data$Trial, paired=FALSE, p.adjust.method = "none")
+
+
+```
+
+
+SMR, UP 25
+```{r}
+test_data <- comp_data %>%
+  
+  filter(Stock == "UP" & Temp.factor == "25")
+  
+pairwise.t.test(test_data$SMR.ms.units, test_data$Trial, paired=FALSE, p.adjust.method = "none")
+
+
+```
+
+
+###MMR
+
+MMR, LP 21
+```{r}
+test_data <- comp_data %>%
+  
+  filter(Stock == "LP" & Temp.factor == "21")
+  
+pairwise.t.test(test_data$MMR.ms.units, test_data$Trial, paired=FALSE, p.adjust.method = "none")
+
+
+```
+
+
+MMR, LP 23
+```{r}
+test_data <- comp_data %>%
+  
+  filter(Stock == "LP" & Temp.factor == "23")
+  
+pairwise.t.test(test_data$MMR.ms.units, test_data$Trial, paired=FALSE, p.adjust.method = "none")
+
+
+```
+
+MMR, LP 25
+```{r}
+test_data <- comp_data %>%
+  
+  filter(Stock == "LP" & Temp.factor == "25")
+  
+pairwise.t.test(test_data$MMR.ms.units, test_data$Trial, paired=FALSE, p.adjust.method = "none")
+
+
+```
+
+
+MMR, UP 21
+```{r}
+test_data <- comp_data %>%
+  
+  filter(Stock == "UP" & Temp.factor == "21")
+  
+pairwise.t.test(test_data$MMR.ms.units, test_data$Trial, paired=FALSE, p.adjust.method = "none")
+
+
+```
+
+MMR, UP 23
+```{r}
+test_data <- comp_data %>%
+  
+  filter(Stock == "UP" & Temp.factor == "23")
+  
+pairwise.t.test(test_data$MMR.ms.units, test_data$Trial, paired=FALSE, p.adjust.method = "none")
+
+
+```
+
+
+
+MMR, UP 25
+```{r}
+test_data <- comp_data %>%
+  
+  filter(Stock == "UP" & Temp.factor == "25")
+  
+pairwise.t.test(test_data$MMR.ms.units, test_data$Trial, paired=FALSE, p.adjust.method = "none")
+
+
+```
+
+
+
+###AS
+
+AS, LP 21
+```{r}
+test_data <- comp_data %>%
+  
+  filter(Stock == "LP" & Temp.factor == "21")
+  
+pairwise.t.test(test_data$AS.ms.units, test_data$Trial, paired=FALSE, p.adjust.method = "none")
+
+
+```
+
+
+
+AS, LP 23
+```{r}
+test_data <- comp_data %>%
+  
+  filter(Stock == "LP" & Temp.factor == "23")
+  
+pairwise.t.test(test_data$AS.ms.units, test_data$Trial, paired=FALSE, p.adjust.method = "none")
+
+
+```
+
+
+AS, LP 25
+```{r}
+test_data <- comp_data %>%
+  
+  filter(Stock == "LP" & Temp.factor == "25")
+  
+pairwise.t.test(test_data$AS.ms.units, test_data$Trial, paired=FALSE, p.adjust.method = "none")
+
+
+```
+
+
+
+
+AS, UP 21
+```{r}
+test_data <- comp_data %>%
+  
+  filter(Stock == "UP" & Temp.factor == "21")
+  
+pairwise.t.test(test_data$AS.ms.units, test_data$Trial, paired=FALSE, p.adjust.method = "none")
+
+
+```
+
+
+AS, UP 23
+```{r}
+test_data <- comp_data %>%
+  
+  filter(Stock == "UP" & Temp.factor == "23")
+  
+pairwise.t.test(test_data$AS.ms.units, test_data$Trial, paired=FALSE, p.adjust.method = "none")
+
+
+```
+
+
+
+
+AS, UP 25
+```{r}
+test_data <- comp_data %>%
+  
+  filter(Stock == "UP" & Temp.factor == "25")
+  
+pairwise.t.test(test_data$AS.ms.units, test_data$Trial, paired=FALSE, p.adjust.method = "none")
+
+
+```
+
+
+
+
+##Option 2: linear models
+
+Comes from the same line of thought as in figuring out a lme approach for the paired t-tests/repeated measures - need an option that's more scalable.  Further, using a lme approach would allow us to account for experiment groupings, individuals, and heterogeneity.
+
+
+###SMR
+
+```{r}
+comp_SMR_gls <- gls(SMR.ms.units ~ Trial*Temp.factor*Stock, data=comp_data)
+
+plot(comp_SMR_gls)
+
+```
+
+Some unevenness here.  We should definitely consider random effects & heterogeneity.
+
+```{r}
+comp_SMR_m1 <- lme(SMR.ms.units ~ Trial*Temp.factor*Stock, data=comp_data,
+                   random = ~1|FishIDs)
+
+comp_SMR_m2 <- lme(SMR.ms.units ~ Trial*Temp.factor*Stock, data=comp_data,
+                   random = ~1|Experiment/FishIDs)
+
+AIC(comp_SMR_gls, comp_SMR_m1, comp_SMR_m2)
+```
+
+Best option here is the model that accounts for experiment group and individuals.
+
+
+```{r}
+plot(comp_SMR_m2)
+```
+
+
+Original and random effects model are both have weird residuals.  Let's explore some more before committing.
+
+Check for causes of heterogeneity.
+
+```{r, fig.width=10, fig.height=6}
+
+grid.arrange(
+  ggplot(comp_data, aes(x=Temp.factor, y=resid(comp_SMR_gls))) +
+    geom_boxplot() + ggtitle("Test Temp") + theme(legend.position="none"),# + ylim(0.5,4.5),
+  
+  ggplot(comp_data, aes(x=Stock, y=resid(comp_SMR_gls))) +
+    geom_boxplot() + ggtitle("Stock") + theme(legend.position="none"),# + ylim(0.5,4.5),
+  
+  ggplot(comp_data, aes(x=Trial, y=resid(comp_SMR_gls))) +
+    geom_boxplot() + ggtitle("Trial") + theme(legend.position="none"),# + ylim(0.5,4.5),
+  
+  ggplot(comp_data, aes(x=Stock, y=resid(comp_SMR_gls), color=Trial)) +
+    geom_boxplot() + theme(legend.position="none"),# + ylim(0.5,4.5),
+  
+  ggplot(comp_data, aes(x=Temp.factor, y=resid(comp_SMR_gls), color=Stock)) +
+    geom_boxplot() + theme(legend.position="none"),# + ylim(0.5,4.5),
+  
+  ggplot(comp_data, aes(x=Stock, y=resid(comp_SMR_gls), color=Temp.factor)) +
+    geom_boxplot() + theme(legend.position="none"),# + ylim(0.5,4.5),
+  
+  ggplot(comp_data, aes(x=Trial, y=resid(comp_SMR_gls), color=Stock)) +
+    geom_boxplot() + theme(legend.position="none"),# + ylim(0.5,4.5),
+  
+  ggplot(comp_data, aes(x=Temp.factor, y=resid(comp_SMR_gls), color=Trial)) +
+    geom_boxplot() + theme(legend.position="none"),# + ylim(0.5,4.5),
+  
+  
+  ncol=4)
+  
+```
+
+```{r, fig.width=8, fig.height=3}
+
+grid.arrange(
+  ggplot(comp_data, aes(x=fitted(comp_SMR_gls), y=residuals(comp_SMR_gls), color=Temp.factor)) +
+    geom_point(alpha = 0.4) + ggtitle("Test Temp") + theme(legend.position="none"),# + ylim(0.5,4.5),
+  
+  ggplot(comp_data, aes(x=fitted(comp_SMR_gls), y=residuals(comp_SMR_gls), color=Stock)) +
+    geom_point(alpha = 0.4) + ggtitle("Stock") + theme(legend.position="none"),# + ylim(0.5,4.5),
+  
+  ggplot(comp_data, aes(x=fitted(comp_SMR_gls), y=residuals(comp_SMR_gls), color=Trial)) +
+    geom_point(alpha = 0.4) + ggtitle("Trial") + theme(legend.position="none"),# + ylim(0.5,4.5),
+  
+  ncol=3)
+  
+```
+
+
+```{r, fig.width=10, fig.height=6}
+
+grid.arrange(
+  ggplot(comp_data, aes(x=Temp.factor, y=resid(comp_SMR_m2))) +
+    geom_boxplot() + ggtitle("Test Temp") + theme(legend.position="none"),# + ylim(0.5,4.5),
+  
+  ggplot(comp_data, aes(x=Stock, y=resid(comp_SMR_m2))) +
+    geom_boxplot() + ggtitle("Stock") + theme(legend.position="none"),# + ylim(0.5,4.5),
+  
+  ggplot(comp_data, aes(x=Trial, y=resid(comp_SMR_m2))) +
+    geom_boxplot() + ggtitle("Trial") + theme(legend.position="none"),# + ylim(0.5,4.5),
+  
+  ggplot(comp_data, aes(x=Stock, y=resid(comp_SMR_m2), color=Trial)) +
+    geom_boxplot() + theme(legend.position="none"),# + ylim(0.5,4.5),
+  
+  ggplot(comp_data, aes(x=Temp.factor, y=resid(comp_SMR_m2), color=Stock)) +
+    geom_boxplot() + theme(legend.position="none"),# + ylim(0.5,4.5),
+  
+  ggplot(comp_data, aes(x=Stock, y=resid(comp_SMR_m2), color=Temp.factor)) +
+    geom_boxplot() + theme(legend.position="none"),# + ylim(0.5,4.5),
+  
+  ggplot(comp_data, aes(x=Trial, y=resid(comp_SMR_m2), color=Stock)) +
+    geom_boxplot() + theme(legend.position="none"),# + ylim(0.5,4.5),
+  
+  ggplot(comp_data, aes(x=Temp.factor, y=resid(comp_SMR_m2), color=Trial)) +
+    geom_boxplot() + theme(legend.position="none"),# + ylim(0.5,4.5),
+  
+  ncol=4)
+  
+```
+
+```{r, fig.width=8, fig.height=3}
+
+grid.arrange(
+  ggplot(comp_data, aes(x=fitted(comp_SMR_m2), y=residuals(comp_SMR_m2), color=Temp.factor)) +
+    geom_point(alpha = 0.4) + ggtitle("Test Temp") + theme(legend.position="none"),# + ylim(0.5,4.5),
+  
+  ggplot(comp_data, aes(x=fitted(comp_SMR_m2), y=residuals(comp_SMR_m2), color=Stock)) +
+    geom_point(alpha = 0.4) + ggtitle("Stock") + theme(legend.position="none"),# + ylim(0.5,4.5),
+  
+  ggplot(comp_data, aes(x=fitted(comp_SMR_m2), y=residuals(comp_SMR_m2), color=Trial)) +
+    geom_point(alpha = 0.4) + ggtitle("Trial") + theme(legend.position="none"),# + ylim(0.5,4.5),
+  
+  ncol=3)
+  
+```
+
+
+
+
+Looks like we can solve the problems with the residuals by accounting for heterogeneity across stocks and/or trials.
+
+```{r}
+comp_SMR_m3 <- lme(SMR.ms.units ~ Trial*Temp.factor*Stock, data=comp_data,
+                   random = ~1|Experiment/FishIDs, weights = varIdent(form = ~1|Stock))
+
+comp_SMR_m4 <- lme(SMR.ms.units ~ Trial*Temp.factor*Stock, data=comp_data,
+                   random = ~1|Experiment/FishIDs, weights = varIdent(form = ~1|Trial))
+
+comp_SMR_m5 <- lme(SMR.ms.units ~ Trial*Temp.factor*Stock, data=comp_data,
+                   random = ~1|Experiment/FishIDs, weights = varIdent(form = ~1|Stock*Trial))
+
+AIC(comp_SMR_m2,comp_SMR_m3, comp_SMR_m4, comp_SMR_m5)
+```
+Best model is the one with variance allowed to differ across every combo of Stock and Trial.
+
+
+```{r, fig.width=8, fig.height=3}
+grid.arrange(
+  plot(comp_SMR_m5),
+  plot(comp_SMR_m2),
+  ncol=2)
+```
+
+
+Still have some patchiness, but looks better than before (variance specification on left, original on right).
+
+
+We need to keep all fixed effects here, in order to do the contrasts we're interested in.  So, move to summary & post hoc tests.
+
+```{r, rows.print=12}
+summary(comp_SMR_m5)
+```
+
+```{r}
+anova(comp_SMR_m5)
+```
+
+####SMR Contrasts:
+
+```{r}
+comp_SMR_emm1 <- emmeans(comp_SMR_m5, ~Trial|Temp.factor*Stock)
+
+contrast(comp_SMR_emm1, method = list(c(1,-1)))
+```
+
+Slightly different conclusions here (p-values differ, esp. for LP 23) than when do every test individually, but nothing that's seems unreal.
+
+
+###MMR
+
+```{r}
+comp_MMR_gls <- gls(MMR.ms.units ~ Trial*Temp.factor*Stock, data=comp_data)
+
+plot(comp_MMR_gls)
+
+```
+
+Some unevenness here, not as much as in SMR.  We should still consider random effects & heterogeneity.
+
+```{r}
+comp_MMR_m1 <- lme(MMR.ms.units ~ Trial*Temp.factor*Stock, data=comp_data,
+                   random = ~1|FishIDs)
+
+comp_MMR_m2 <- lme(MMR.ms.units ~ Trial*Temp.factor*Stock, data=comp_data,
+                   random = ~1|Experiment/FishIDs)
+
+AIC(comp_MMR_gls, comp_MMR_m1, comp_MMR_m2)
+```
+
+AIC scores don't lead to any strong difference.  Let's look at the residuals.
+
+```{r}
+plot(comp_MMR_m2)
+```
+
+
+Residuals in random effects model are more evenly distributed (instead of patchy).  Otherwise pretty similar.
+
+Check for heterogeneity.
+
+```{r, fig.width=10, fig.height=6}
+
+grid.arrange(
+  ggplot(comp_data, aes(x=Temp.factor, y=resid(comp_MMR_gls))) +
+    geom_boxplot() + ggtitle("Test Temp") + theme(legend.position="none"),# + ylim(0.5,4.5),
+  
+  ggplot(comp_data, aes(x=Stock, y=resid(comp_MMR_gls))) +
+    geom_boxplot() + ggtitle("Stock") + theme(legend.position="none"),# + ylim(0.5,4.5),
+  
+  ggplot(comp_data, aes(x=Trial, y=resid(comp_MMR_gls))) +
+    geom_boxplot() + ggtitle("Trial") + theme(legend.position="none"),# + ylim(0.5,4.5),
+  
+  ggplot(comp_data, aes(x=Stock, y=resid(comp_MMR_gls), color=Trial)) +
+    geom_boxplot() + theme(legend.position="none"),# + ylim(0.5,4.5),
+  
+  ggplot(comp_data, aes(x=Temp.factor, y=resid(comp_MMR_gls), color=Stock)) +
+    geom_boxplot() + theme(legend.position="none"),# + ylim(0.5,4.5),
+  
+  ggplot(comp_data, aes(x=Stock, y=resid(comp_MMR_gls), color=Temp.factor)) +
+    geom_boxplot() + theme(legend.position="none"),# + ylim(0.5,4.5),
+  
+  ggplot(comp_data, aes(x=Trial, y=resid(comp_MMR_gls), color=Stock)) +
+    geom_boxplot() + theme(legend.position="none"),# + ylim(0.5,4.5),
+  
+  ggplot(comp_data, aes(x=Temp.factor, y=resid(comp_MMR_gls), color=Trial)) +
+    geom_boxplot() + theme(legend.position="none"),# + ylim(0.5,4.5),
+  
+  
+  ncol=4)
+  
+```
+
+```{r, fig.width=8, fig.height=3}
+
+grid.arrange(
+  ggplot(comp_data, aes(x=fitted(comp_MMR_gls), y=residuals(comp_MMR_gls), color=Temp.factor)) +
+    geom_point(alpha = 0.4) + ggtitle("Test Temp") + theme(legend.position="none"),# + ylim(0.5,4.5),
+  
+  ggplot(comp_data, aes(x=fitted(comp_MMR_gls), y=residuals(comp_MMR_gls), color=Stock)) +
+    geom_point(alpha = 0.4) + ggtitle("Stock") + theme(legend.position="none"),# + ylim(0.5,4.5),
+  
+  ggplot(comp_data, aes(x=fitted(comp_MMR_gls), y=residuals(comp_MMR_gls), color=Trial)) +
+    geom_point(alpha = 0.4) + ggtitle("Trial") + theme(legend.position="none"),# + ylim(0.5,4.5),
+  
+  ncol=3)
+  
+```
+
+
+```{r, fig.width=10, fig.height=6}
+
+grid.arrange(
+  ggplot(comp_data, aes(x=Temp.factor, y=resid(comp_MMR_m2))) +
+    geom_boxplot() + ggtitle("Test Temp") + theme(legend.position="none"),# + ylim(0.5,4.5),
+  
+  ggplot(comp_data, aes(x=Stock, y=resid(comp_MMR_m2))) +
+    geom_boxplot() + ggtitle("Stock") + theme(legend.position="none"),# + ylim(0.5,4.5),
+  
+  ggplot(comp_data, aes(x=Trial, y=resid(comp_MMR_m2))) +
+    geom_boxplot() + ggtitle("Trial") + theme(legend.position="none"),# + ylim(0.5,4.5),
+  
+  ggplot(comp_data, aes(x=Stock, y=resid(comp_MMR_m2), color=Trial)) +
+    geom_boxplot() + theme(legend.position="none"),# + ylim(0.5,4.5),
+  
+  ggplot(comp_data, aes(x=Temp.factor, y=resid(comp_MMR_m2), color=Stock)) +
+    geom_boxplot() + theme(legend.position="none"),# + ylim(0.5,4.5),
+  
+  ggplot(comp_data, aes(x=Stock, y=resid(comp_MMR_m2), color=Temp.factor)) +
+    geom_boxplot() + theme(legend.position="none"),# + ylim(0.5,4.5),
+  
+  ggplot(comp_data, aes(x=Trial, y=resid(comp_MMR_m2), color=Stock)) +
+    geom_boxplot() + theme(legend.position="none"),# + ylim(0.5,4.5),
+  
+  ggplot(comp_data, aes(x=Temp.factor, y=resid(comp_MMR_m2), color=Trial)) +
+    geom_boxplot() + theme(legend.position="none"),# + ylim(0.5,4.5),
+  
+  ncol=4)
+  
+```
+
+```{r, fig.width=8, fig.height=3}
+
+grid.arrange(
+  ggplot(comp_data, aes(x=fitted(comp_MMR_m2), y=residuals(comp_MMR_m2), color=Temp.factor)) +
+    geom_point(alpha = 0.4) + ggtitle("Test Temp") + theme(legend.position="none"),# + ylim(0.5,4.5),
+  
+  ggplot(comp_data, aes(x=fitted(comp_MMR_m2), y=residuals(comp_MMR_m2), color=Stock)) +
+    geom_point(alpha = 0.4) + ggtitle("Stock") + theme(legend.position="none"),# + ylim(0.5,4.5),
+  
+  ggplot(comp_data, aes(x=fitted(comp_MMR_m2), y=residuals(comp_MMR_m2), color=Trial)) +
+    geom_point(alpha = 0.4) + ggtitle("Trial") + theme(legend.position="none"),# + ylim(0.5,4.5),
+  
+  ncol=3)
+  
+```
+
+
+No hugely obvious source of heterogeneity, unlike in SMR.  Check.
+
+```{r}
+comp_MMR_m3 <- lme(MMR.ms.units ~ Trial*Temp.factor*Stock, data=comp_data,
+                   random = ~1|Experiment/FishIDs, weights = varIdent(form = ~1|Stock))
+
+comp_MMR_m4 <- lme(MMR.ms.units ~ Trial*Temp.factor*Stock, data=comp_data,
+                   random = ~1|Experiment/FishIDs, weights = varIdent(form = ~1|Trial))
+
+comp_MMR_m5 <- lme(MMR.ms.units ~ Trial*Temp.factor*Stock, data=comp_data,
+                   random = ~1|Experiment/FishIDs, weights = varIdent(form = ~1|Stock*Trial))
+
+AIC(comp_MMR_m2,comp_MMR_m3, comp_MMR_m4, comp_MMR_m5)
+```
+
+No improvement in AIC with heterogeneity handling.  So, we go without.
+
+
+Compare residuals with & without the random effects.
+
+```{r, fig.width=8, fig.height=3}
+grid.arrange(
+  plot(comp_MMR_gls),
+  plot(comp_MMR_m2),
+  ncol=2)
+```
+
+
+Could go either way - original (left) is patchy, but spread is good.  Random effects model (right) gets rid of patches, but there's a slight increasing trend.  Let's keep random effects for now.
+
+
+We need to keep all fixed effects here, in order to do the contrasts we're interested in.  So, move to summary & post hoc tests.
+
+```{r, rows.print=12}
+summary(comp_MMR_m2)
+```
+
+```{r}
+anova(comp_MMR_m2)
+```
+
+####MMR Contrasts:
+
+```{r}
+comp_MMR_emm1 <- emmeans(comp_MMR_m2, ~Trial|Temp.factor*Stock)
+
+contrast(comp_MMR_emm1, method = list(c(1,-1)))
+```
+
+Pretty different conclusions here than when do each trial separately in t-tests, since most of those were highly significant, whereas these are mostly not significant.  Comparing against the boxplots, these results are fairly convincing - everywhere that's moved to borderline-significant is, on the graphs, hard to tell if they'll group separately.  I feel better about these results, because they account for repeated measures and such.
+
+
+
+###AS
+
+```{r}
+comp_AS_gls <- gls(AS.ms.units ~ Trial*Temp.factor*Stock, data=comp_data)
+
+plot(comp_AS_gls)
+
+```
+
+Some unevenness here, not as much as in SMR.  Less patchy than MMR.  We should still consider random effects & heterogeneity.
+
+```{r}
+comp_AS_m1 <- lme(AS.ms.units ~ Trial*Temp.factor*Stock, data=comp_data,
+                   random = ~1|FishIDs)
+
+comp_AS_m2 <- lme(AS.ms.units ~ Trial*Temp.factor*Stock, data=comp_data,
+                   random = ~1|Experiment/FishIDs)
+
+AIC(comp_AS_gls, comp_AS_m1, comp_AS_m2)
+```
+
+AIC scores don't lead to any strong difference.  Let's look at the residuals.
+
+```{r}
+plot(comp_AS_m2)
+```
+
+
+Pretty similar.  Less obvious patchiness, but now we see some heterogeneity.  Likely will keep random effect for consistency in model formats, since needed in SMR and MMR.
+
+
+Check for heterogeneity.
+
+```{r, fig.width=10, fig.height=6}
+
+grid.arrange(
+  ggplot(comp_data, aes(x=Temp.factor, y=resid(comp_AS_gls))) +
+    geom_boxplot() + ggtitle("Test Temp") + theme(legend.position="none"),# + ylim(0.5,4.5),
+  
+  ggplot(comp_data, aes(x=Stock, y=resid(comp_AS_gls))) +
+    geom_boxplot() + ggtitle("Stock") + theme(legend.position="none"),# + ylim(0.5,4.5),
+  
+  ggplot(comp_data, aes(x=Trial, y=resid(comp_AS_gls))) +
+    geom_boxplot() + ggtitle("Trial") + theme(legend.position="none"),# + ylim(0.5,4.5),
+  
+  ggplot(comp_data, aes(x=Stock, y=resid(comp_AS_gls), color=Trial)) +
+    geom_boxplot() + theme(legend.position="none"),# + ylim(0.5,4.5),
+  
+  ggplot(comp_data, aes(x=Temp.factor, y=resid(comp_AS_gls), color=Stock)) +
+    geom_boxplot() + theme(legend.position="none"),# + ylim(0.5,4.5),
+  
+  ggplot(comp_data, aes(x=Stock, y=resid(comp_AS_gls), color=Temp.factor)) +
+    geom_boxplot() + theme(legend.position="none"),# + ylim(0.5,4.5),
+  
+  ggplot(comp_data, aes(x=Trial, y=resid(comp_AS_gls), color=Stock)) +
+    geom_boxplot() + theme(legend.position="none"),# + ylim(0.5,4.5),
+  
+  ggplot(comp_data, aes(x=Temp.factor, y=resid(comp_AS_gls), color=Trial)) +
+    geom_boxplot() + theme(legend.position="none"),# + ylim(0.5,4.5),
+  
+  
+  ncol=4)
+  
+```
+
+```{r, fig.width=8, fig.height=3}
+
+grid.arrange(
+  ggplot(comp_data, aes(x=fitted(comp_AS_gls), y=residuals(comp_AS_gls), color=Temp.factor)) +
+    geom_point(alpha = 0.4) + ggtitle("Test Temp") + theme(legend.position="none"),# + ylim(0.5,4.5),
+  
+  ggplot(comp_data, aes(x=fitted(comp_AS_gls), y=residuals(comp_AS_gls), color=Stock)) +
+    geom_point(alpha = 0.4) + ggtitle("Stock") + theme(legend.position="none"),# + ylim(0.5,4.5),
+  
+  ggplot(comp_data, aes(x=fitted(comp_AS_gls), y=residuals(comp_AS_gls), color=Trial)) +
+    geom_point(alpha = 0.4) + ggtitle("Trial") + theme(legend.position="none"),# + ylim(0.5,4.5),
+  
+  ncol=3)
+  
+```
+
+
+```{r, fig.width=10, fig.height=6}
+
+grid.arrange(
+  ggplot(comp_data, aes(x=Temp.factor, y=resid(comp_AS_m2))) +
+    geom_boxplot() + ggtitle("Test Temp") + theme(legend.position="none"),# + ylim(0.5,4.5),
+  
+  ggplot(comp_data, aes(x=Stock, y=resid(comp_AS_m2))) +
+    geom_boxplot() + ggtitle("Stock") + theme(legend.position="none"),# + ylim(0.5,4.5),
+  
+  ggplot(comp_data, aes(x=Trial, y=resid(comp_AS_m2))) +
+    geom_boxplot() + ggtitle("Trial") + theme(legend.position="none"),# + ylim(0.5,4.5),
+  
+  ggplot(comp_data, aes(x=Stock, y=resid(comp_AS_m2), color=Trial)) +
+    geom_boxplot() + theme(legend.position="none"),# + ylim(0.5,4.5),
+  
+  ggplot(comp_data, aes(x=Temp.factor, y=resid(comp_AS_m2), color=Stock)) +
+    geom_boxplot() + theme(legend.position="none"),# + ylim(0.5,4.5),
+  
+  ggplot(comp_data, aes(x=Stock, y=resid(comp_AS_m2), color=Temp.factor)) +
+    geom_boxplot() + theme(legend.position="none"),# + ylim(0.5,4.5),
+  
+  ggplot(comp_data, aes(x=Trial, y=resid(comp_AS_m2), color=Stock)) +
+    geom_boxplot() + theme(legend.position="none"),# + ylim(0.5,4.5),
+  
+  ggplot(comp_data, aes(x=Temp.factor, y=resid(comp_AS_m2), color=Trial)) +
+    geom_boxplot() + theme(legend.position="none"),# + ylim(0.5,4.5),
+  
+  ncol=4)
+  
+```
+
+```{r, fig.width=8, fig.height=3}
+
+grid.arrange(
+  ggplot(comp_data, aes(x=fitted(comp_AS_m2), y=residuals(comp_AS_m2), color=Temp.factor)) +
+    geom_point(alpha = 0.4) + ggtitle("Test Temp") + theme(legend.position="none"),# + ylim(0.5,4.5),
+  
+  ggplot(comp_data, aes(x=fitted(comp_AS_m2), y=residuals(comp_AS_m2), color=Stock)) +
+    geom_point(alpha = 0.4) + ggtitle("Stock") + theme(legend.position="none"),# + ylim(0.5,4.5),
+  
+  ggplot(comp_data, aes(x=fitted(comp_AS_m2), y=residuals(comp_AS_m2), color=Trial)) +
+    geom_point(alpha = 0.4) + ggtitle("Trial") + theme(legend.position="none"),# + ylim(0.5,4.5),
+  
+  ncol=3)
+  
+```
+
+
+
+No obvious evidence for heterogeneity.  Verify.
+```{r}
+
+comp_AS_m3 <- lme(AS.ms.units ~ Trial*Temp.factor*Stock, data=comp_data,
+                   random = ~1|Experiment/FishIDs, weights = varIdent(form = ~1|Stock))
+
+comp_AS_m4 <- lme(AS.ms.units ~ Trial*Temp.factor*Stock, data=comp_data,
+                   random = ~1|Experiment/FishIDs, weights = varIdent(form = ~1|Trial))
+
+comp_AS_m5 <- lme(AS.ms.units ~ Trial*Temp.factor*Stock, data=comp_data,
+                   random = ~1|Experiment/FishIDs, weights = varIdent(form = ~1|Stock*Trial))
+
+comp_AS_m6 <- lme(AS.ms.units ~ Trial*Temp.factor*Stock, data=comp_data,
+                   random = ~1|Experiment/FishIDs, weights = varIdent(form = ~1|Temp.factor))
+
+
+
+AIC(comp_AS_m2,comp_AS_m3, comp_AS_m4, comp_AS_m5, comp_AS_m6)
+```
+
+All variance specifications are worse, confirming that we don't need to account for heterogeneity.
+
+
+
+
+
+```{r, fig.width=8, fig.height=3}
+grid.arrange(
+  plot(comp_AS_gls),
+  plot(comp_AS_m2),
+  ncol=2)
+```
+
+
+Could go either way.  Let's keep random effects for now.
+
+
+We need to keep all fixed effects here, in order to do the contrasts we're interested in.  So, move to summary & post hoc tests.
+
+```{r, rows.print=12}
+summary(comp_AS_m2)
+```
+
+```{r}
+anova(comp_AS_m2)
+```
+
+####AS Contrasts:
+
+```{r}
+comp_AS_emm1 <- emmeans(comp_AS_m2, ~Trial|Temp.factor*Stock)
+
+contrast(comp_AS_emm1, method = list(c(1,-1)))
+```
+
+Reach similar conclusions about significance as in t-tests (except LP 23), but these are all much less significant than they are there.  Matches fine with the boxplots.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
