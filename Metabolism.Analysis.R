@@ -148,7 +148,7 @@ TukeyHSD(exp.test)
 #No significant differences among experiments
 
 
-#So only 1 experiment saw a significant different between rep 1 and 2, see supplemental information for explanation and rational for only using rep 1
+#So only 1 experiment saw a significant different between rep 1 and 2, see manuscript for explanation and rational for only using rep 1
 final_data<-filter(all_data,all_data$Replicate==1)
 
 ############################################
@@ -428,6 +428,16 @@ summary(SMR_gam.a)
 
 #No significant differences in models
 
+#simplified models to assess R2 and deviance
+SMR_gam.simple<-gam(SMR.abs~s(Mass), data=acute_spring, method="REML",select=T)
+summary(SMR_gam.simple)
+appraise(SMR_gam.simple)
+
+SMR_gam.simple.2<-gam(SMR.abs~s(SMR.Temp.true,by=Pond,k=5), data=acute_spring, method="REML",select=T)
+summary(SMR_gam.simple.2)
+appraise(SMR_gam.simple.2)
+
+#Still have very high R2 and deviance explained even in simplistic models. 
 
 
 #Plot of Effect of Populations
@@ -770,9 +780,9 @@ tab_model(smr.acclim.final)
 
 
 
-emms<-emmip(smr.acclim.final,Pond~Temp.factor|log(Mass),plotit=F,CIs=T)
+emms<-emmip(smr.acclim.final,Pond~Temp.factor|log(Mass),plotit=F,CIs=T,style="factor")
 smr.emms<-emmip_ggplot(emms)
-smr.emms<-smr.emms+theme_classic()+theme(legend.position="None")+
+smr.emms<-smr.emms+theme_classic()+theme(legend.position="None",strip.text.x = element_blank(),axis.text = element_text(size=15),axis.title=element_text(size=15,face="bold"))+
   scale_color_manual(values=c("deeppink2","orange","deepskyblue","darkred","darkorange3","blue4"))
 smr.emms
 
@@ -787,7 +797,7 @@ smr.lme.sel<-lme(log(SMR.abs)~log(Mass)*Temp.factor*Pond*Trial,random=~1|Ind,dat
 #SMR model selection
 sel.smr<-dredge(smr.lme.sel,rank="AIC",fixed=c("log(Mass)","Temp.factor","Trial","Pond"),trace=2)
 
-#Check all models within dela 2
+#Check all models within delta 2
 get.models(sel.smr,subset=delta<2)[[1]]
 
 
@@ -805,7 +815,7 @@ pairs(smr.emm.s)
 
 emms<-emmip(smr.lme.final,Pond+Trial~Temp.factor|log(Mass),plotit=F,CIs=T)
 smr.emms<-emmip_ggplot(emms)
-smr.emms<-smr.emms+theme_classic()+theme(legend.position="None")+
+smr.emms<-smr.emms+theme_classic()+theme(legend.position="None",strip.text.x = element_blank(),axis.text = element_text(size=15),axis.title=element_text(size=15,face="bold"),plot.title = element_text(size=15,face="bold",hjust = 0.5))+ ggtitle("SMR")+ labs(x="",y="")+
   scale_color_manual(values=c("deeppink2","orange","deepskyblue","darkred","darkorange3","blue4"))
 smr.emms
 
@@ -830,7 +840,7 @@ tab_model(mmr.acclim.final)
 
 emms<-emmip(mmr.acclim.final,Pond~Temp.factor|log(SMR.abs)+log(Mass),plotit=F,CIs=T)
 mmr.acclim.emms<-emmip_ggplot(emms)
-mmr.acclim.emms<-mmr.acclim.emms+theme_classic()+theme(legend.position="None")+
+mmr.acclim.emms<-mmr.acclim.emms+theme_classic()+theme(legend.position="None",strip.text.x = element_blank(),strip.text.y=element_blank(),axis.text = element_text(size=15),axis.title=element_text(size=15,face="bold"))+
   scale_color_manual(values=c("deeppink2","orange","deepskyblue","darkred","darkorange3","blue4"))
 mmr.acclim.emms
 
@@ -855,9 +865,9 @@ tab_model(mmr.lme.final)
 mmr.emm.s<-emmeans(mmr.lme.final,~Trial|Pond+log(SMR.abs)+Temp.factor+log(Mass))
 pairs(mmr.emm.s)
 
-emms<-emmip(mmr.lme.final.2,Pond+Trial~Temp.factor|log(SMR.abs)+log(Mass),plotit = F,CIs=T)
+emms<-emmip(mmr.lme.final,Pond+Trial~Temp.factor|log(SMR.abs)+log(Mass),plotit = F,CIs=T)
 mmr.emms<-emmip_ggplot(emms)
-mmr.emms<-mmr.emms+theme_classic()+theme(legend.position="None")+
+mmr.emms<-mmr.emms+theme_classic()+theme(legend.position="None",strip.text.x = element_blank(),strip.text.y = element_blank(),axis.text = element_text(size=15),axis.title=element_text(size=15,face="bold"),plot.title = element_text(size=15,face="bold",hjust = 0.5))+ labs(x="") + ggtitle("MMR") +
   scale_color_manual(values=c("deeppink2","orange","deepskyblue","darkred","darkorange3","blue4"))
 mmr.emms
 
@@ -880,7 +890,7 @@ tab_model(as.acclim.final)
 
 emms<-emmip(as.acclim.final,Pond~Temp.factor|log(Mass),plotit=F,CIs=T)
 as.acclim.emms<-emmip_ggplot(emms)
-as.acclim.emms<-as.acclim.emms+theme_classic()+theme(legend.position="None")+
+as.acclim.emms<-as.acclim.emms+theme_classic()+theme(legend.position="None",strip.text.x = element_blank(),axis.text = element_text(size=15),axis.title=element_text(size=15,face="bold"))+
   scale_color_manual(values=c("deeppink2","orange","deepskyblue","darkred","darkorange3","blue4"))
 as.acclim.emms
 
@@ -908,7 +918,7 @@ pairs(as.emm.s)
 
 emms<-emmip(as.lme.final,Pond+Trial~Temp.factor|log(Mass),plotit = F,CIs=T)
 as.emms<-emmip_ggplot(emms)
-as.emms<-as.emms+theme_classic()+theme(legend.position="None")+
+as.emms<-as.emms+theme_classic()+theme(legend.position="None",strip.text.x = element_blank(),axis.text = element_text(size=15),axis.title=element_text(size=15,face="bold"),plot.title = element_text(size=15,face="bold",hjust = 0.5))+labs(x="Temperature",y="")+ ggtitle("AS")+
   scale_color_manual(values=c("deeppink2","orange","deepskyblue","darkred","darkorange3","blue4"))
 as.emms
 
@@ -920,7 +930,7 @@ grid.arrange(
   smr.emms,
   mmr.emms,
   as.emms,
-  ncol=3
+  ncol=1
 )
 
 
