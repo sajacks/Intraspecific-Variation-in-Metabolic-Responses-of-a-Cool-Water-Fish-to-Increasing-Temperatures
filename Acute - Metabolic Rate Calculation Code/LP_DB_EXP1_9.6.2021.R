@@ -441,3 +441,201 @@ grid.arrange(
 
 
 
+###################################################################
+####Additional Analysis for Manuscript
+###################################################################
+
+###Function from Chabot et al 2016 appendix 1
+
+calcSMR = function(Y, q=c(0.1,0.15,0.2,0.25,0.3), G=1:4){
+  u = sort(Y)
+  the.Mclust <- Mclust(Y,  G=G)
+  cl <- the.Mclust$classification
+  # sometimes, the class containing SMR is not called 1
+  # the following presumes that when class 1 contains > 10% of cases, 
+  # it contains SMR, otherwise we take class 2
+  cl2 <- as.data.frame(table(cl))
+  cl2$cl <- as.numeric(levels(cl2$cl))
+  valid <- cl2$Freq>=0.1*length(time)  
+  the.cl <- min(cl2$cl[valid])
+  left.distr <- Y[the.Mclust$classification==the.cl]
+  mlnd = the.Mclust$parameters$mean[the.cl]
+  CVmlnd = sd(left.distr)/mlnd * 100
+  quant=quantile(Y, q)
+  low10=mean(u[1:10])
+  low10pc = mean(u[6:(5 + round(0.1*(length(u)-5)))])
+  # remove 5 outliers, keep lowest 10% of the rest, average
+  # Herrmann & Enders 2000
+  return(list(mlnd=mlnd, quant=quant, low10=low10, low10pc=low10pc,
+              cl=cl, CVmlnd=CVmlnd))
+}
+
+
+
+
+
+
+##Extract all slopes for Standard Metabolic Rate
+DB1.SMR.21.all<-extract.slope(DB1.SMR.21.clean,
+                              method="all",
+                              r2=0.9)
+##Calculate MR for all slopes
+DB1.SMR.21<-calculate.MR(DB1.SMR.21.all,density=1000)
+##Turn Phase into a numeric variable
+DB1.SMR.21<-DB1.SMR.21%>%mutate(Phase=as.numeric(gsub("M","",Phase)))
+
+##Extract average phase used for calculating SMR
+grouped_quantiles<-DB1.SMR.21 %>%
+  group_by(Ind) %>%
+  summarise(twentieth_quantile =quantile(MR.abs,.2,na.rm=TRUE)) %>%
+  ungroup()
+
+extract_values<-function(group_df,q){
+  group_df %>%
+    filter(MR.abs<= q)
+}
+
+values<-list()
+
+for (i in seq_along(grouped_quantiles$Ind)){
+  group_data_subset<-DB1.SMR.21%>%
+    filter(Ind==grouped_quantiles$Ind[i])
+  quantile_value<-grouped_quantiles$twentieth_quantile[i]
+  values[[grouped_quantiles$Ind[i]]]<-extract_values(group_data_subset,quantile_value)
+}
+
+for( i in 1:length(values)) {
+  group_df<-values[[i]]
+  mean_phase_values[i]<-mean(group_df$Phase,na.rm=TRUE)
+}
+DB1.21<-mean_phase_values
+
+
+
+DB1.SMR.23.all<-extract.slope(DB1.SMR.23.clean,
+                              method="all",
+                              r2=0.9)
+DB1.SMR.23<-calculate.MR(DB1.SMR.23.all,density=1000)
+DB1.SMR.23<-DB1.SMR.23%>%mutate(Phase=as.numeric(gsub("M","",Phase)))
+
+##Extract average phase used for calculating SMR
+grouped_quantiles<-DB1.SMR.23 %>%
+  group_by(Ind) %>%
+  summarise(twentieth_quantile =quantile(MR.abs,.2,na.rm=TRUE)) %>%
+  ungroup()
+
+extract_values<-function(group_df,q){
+  group_df %>%
+    filter(MR.abs<= q)
+}
+
+values<-list()
+
+for (i in seq_along(grouped_quantiles$Ind)){
+  group_data_subset<-DB1.SMR.23%>%
+    filter(Ind==grouped_quantiles$Ind[i])
+  quantile_value<-grouped_quantiles$twentieth_quantile[i]
+  values[[grouped_quantiles$Ind[i]]]<-extract_values(group_data_subset,quantile_value)
+}
+
+for( i in 1:length(values)) {
+  group_df<-values[[i]]
+  mean_phase_values[i]<-mean(group_df$Phase,na.rm=TRUE)
+}
+DB1.23<-mean_phase_values
+
+
+DB1.SMR.25.all<-extract.slope(DB1.SMR.25.clean,
+                              method="all",
+                              r2=0.9)
+DB1.SMR.25<-calculate.MR(DB1.SMR.25.all,density=1000)
+DB1.SMR.25<-DB1.SMR.25%>%mutate(Phase=as.numeric(gsub("M","",Phase)))
+
+##Extract average phase used for calculating SMR
+grouped_quantiles<-DB1.SMR.25 %>%
+  group_by(Ind) %>%
+  summarise(twentieth_quantile =quantile(MR.abs,.2,na.rm=TRUE)) %>%
+  ungroup()
+
+extract_values<-function(group_df,q){
+  group_df %>%
+    filter(MR.abs<= q)
+}
+
+values<-list()
+
+for (i in seq_along(grouped_quantiles$Ind)){
+  group_data_subset<-DB1.SMR.25%>%
+    filter(Ind==grouped_quantiles$Ind[i])
+  quantile_value<-grouped_quantiles$twentieth_quantile[i]
+  values[[grouped_quantiles$Ind[i]]]<-extract_values(group_data_subset,quantile_value)
+}
+
+for( i in 1:length(values)) {
+  group_df<-values[[i]]
+  mean_phase_values[i]<-mean(group_df$Phase,na.rm=TRUE)
+}
+DB1.25<-mean_phase_values
+
+
+Phase_values<-data.frame(rbind(DB1.21,DB1.23,DB1.25),row.names=c(1,2,3))
+
+Phase_values<-cbind(Phase_values,Temperature)
+names(Phase_values)<-c(1,2,3,4,5,6,7,8,"Temp")
+library(reshape2)
+Phase<-melt(Phase_values,id.vars="Temp")
+ggplot(Phase,aes(x=variable,y=value,color=Temp))+geom_point()
+
+install.packages("quantreg")
+library("quantreg")
+summary(rq(MR.abs~Phase, tau=.2,data=DB1.SMR.21),se="nid")
+
+summary(rq(MR.abs~poly(Phase,2)*Ind, tau=.2,data=DB1.SMR.23),se="nid")
+
+summary(rq(MR.abs~poly(Phase,2)*Ind, tau=.2,data=DB1.SMR.25),se="nid")
+
+summary(rq(MR.abs~poly(Phase,2)*Ind, tau=.2,data=DB1.SMR.21.2),se="nid")
+
+install.packages("lqmm")
+DB1.SMR.21$Ind<-as.numeric(DB1.SMR.21$Ind)
+DB1.SMR.23$Ind<-as.numeric(DB1.SMR.23$Ind)
+DB1.SMR.25$Ind<-as.numeric(DB1.SMR.25$Ind)
+DB1.SMR.21.2$Ind<-as.numeric(DB1.SMR.21.2$Ind)
+library(lqmm)
+DB1.21.model<-lqmm(fixed=MR.abs~Phase,random=~1|Ind,group=Ind,tau=.2,data=DB1.SMR.21)
+summary(DB1.21.model)
+
+DB1.23.model<-lqmm(fixed=MR.abs~Phase,random=~1|Ind,group=Ind,tau=.2,data=DB1.SMR.23)
+summary(DB1.23.model)
+
+DB1.25.model<-lqmm(fixed=MR.abs~Phase,random=~1|Ind,group=Ind,tau=.2,data=DB1.SMR.25,control = list(eps = 1e-4,  # Increase tolerance by setting a higher eps value
+                                                                                                    LP_max_iter = 1000))
+summary(DB1.25.model)
+
+DB1.21.2.model<-lqmm(fixed=MR.abs~Phase,random=~1|Ind,group=Ind,tau=.2,data=DB1.SMR.21.2)
+summary(DB1.21.2.model)
+
+DB1.SMR.21.2.all<-extract.slope(DB1.SMR.21.2.clean,
+                                method="all",
+                                r2=0.9)
+DB1.SMR.21.2<-calculate.MR(DB1.SMR.21.2.all,density=1000)
+DB1.SMR.21.2<-DB1.SMR.21.2%>%mutate(Phase=as.numeric(gsub("M","",Phase)))
+
+
+ggplot(DB1.SMR.21,aes(x=Phase, y=MR.abs,color=Chamber.No))+geom_point()+geom_smooth(method=lm,formula=y~poly(x,2))
+grid.arrange(
+  ggplot(DB1.SMR.21,aes(x=Phase, y=MR.abs,color=Chamber.No))+geom_point()+geom_smooth(method=lm,formula=y~poly(x,2)),
+  ggplot(DB1.SMR.23,aes(x=Phase, y=MR.abs,color=Chamber.No))+geom_point()+geom_smooth(method=lm,formula=y~poly(x,2)),
+  ggplot(DB1.SMR.25,aes(x=Phase, y=MR.abs,color=Chamber.No))+geom_point()+geom_smooth(method=lm,formula=y~poly(x,2)),
+  ggplot(DB1.SMR.21.2,aes(x=Phase, y=MR.abs,color=Chamber.No))+geom_point()+geom_smooth(method=lm,formula=y~poly(x,2)),
+  ncol=2
+)
+
+write.csv(DB1.SMR.21,"DB1.SMR.21.all.csv")
+write.csv(DB1.SMR.23,"DB1.SMR.23.all.csv")
+write.csv(DB1.SMR.25,"DB1.SMR.25.all.csv")
+write.csv(DB1.SMR.21.2,"DB1.SMR.21.2.all.csv")
+
+
+
+
