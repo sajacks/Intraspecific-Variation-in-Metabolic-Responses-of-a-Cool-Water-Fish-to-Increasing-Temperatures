@@ -522,6 +522,8 @@ calcSMR = function(Y, q=c(0.1,0.15,0.2,0.25,0.3), G=1:4){
 BC1.SMR.21.all<-extract.slope(BC1.SMR.21.clean,
                                 method="all",
                                 r2=0.9)
+
+ggplot(BC1.SMR.21,aes(x=Phase,y=MR.abs))+geom_point()
 ##Calculate MR for all slopes
 BC1.SMR.21<-calculate.MR(BC1.SMR.21.all,density=1000)
 ##Turn Phase into a numeric variable
@@ -614,6 +616,7 @@ for (i in seq_along(grouped_quantiles$Ind)){
   values[[grouped_quantiles$Ind[i]]]<-extract_values(group_data_subset,quantile_value)
 }
 
+values
 for( i in 1:length(values)) {
   group_df<-values[[i]]
   mean_phase_values[i]<-mean(group_df$Phase,na.rm=TRUE)
@@ -646,8 +649,9 @@ BC1.SMR.25$Ind<-as.numeric(BC1.SMR.25$Ind)
 BC1.SMR.21.2$Ind<-as.numeric(BC1.SMR.21.2$Ind)
 
 library(lqmm)
-BC1.21.model<-lqmm(fixed=MR.abs~Phase+Temp,random=~1|Ind,group=Ind,tau=.2,data=BC1.SMR.21)
+BC1.21.model<-lqmm(fixed=MR.abs~Phase,random=~1|Ind,group=Ind,tau=.2,data=BC1.SMR.21)
 summary(BC1.21.model)
+
 
 BC1.23.model<-lqmm(fixed=MR.abs~Phase+Temp,random=~1|Ind,group=Ind,tau=.2,data=BC1.SMR.23)
 summary(BC1.23.model)
@@ -671,10 +675,9 @@ BC1.SMR.21.2<-BC1.SMR.21.2%>%mutate(Phase=as.numeric(gsub("M","",Phase)))
 
 ggplot(BC1.SMR.21,aes(x=Phase, y=MR.abs,color=Chamber.No))+geom_point()+geom_smooth(method=lm,formula=y~poly(x,2))
 grid.arrange(
-ggplot(BC1.SMR.21,aes(x=Phase, y=MR.abs,color=Chamber.No))+geom_point()+geom_smooth(method=lm,formula=y~poly(x,2)),
-ggplot(BC1.SMR.23,aes(x=Phase, y=MR.abs,color=Chamber.No))+geom_point()+geom_smooth(method=lm,formula=y~poly(x,2)),
-ggplot(BC1.SMR.25,aes(x=Phase, y=MR.abs,color=Chamber.No))+geom_point()+geom_smooth(method=lm,formula=y~poly(x,2)),
-ggplot(BC1.SMR.21.2,aes(x=Phase, y=MR.abs,color=Chamber.No))+geom_point()+geom_smooth(method=lm,formula=y~poly(x,2)),
+ggplot(BC1.SMR.21,aes(x=Phase, y=MR.abs,color=Chamber.No))+geom_point(),
+ggplot(BC1.SMR.23,aes(x=Phase, y=MR.abs,color=Chamber.No))+geom_point(),
+ggplot(BC1.SMR.25,aes(x=Phase, y=MR.abs,color=Chamber.No))+geom_point(),
 ncol=2
 )
 
